@@ -102,7 +102,7 @@ def init_session_state():
 def main():
     init_session_state()
     
-    st.title("🚀 NexuStream ML Intelligence Pipeline")
+    st.title("🚀 ML Intelligence Pipeline")
     st.markdown("Transform raw data into predictive insights with our state-of-the-art automated pipeline.")
 
     # Horizontal Step-based Navigation using Tabs
