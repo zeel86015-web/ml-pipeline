@@ -19,7 +19,7 @@ import io
 
 # Set page config for a premium feel
 st.set_page_config(
-    page_title="NexuStream | ML Intelligence Pipeline",
+    page_title="ML Intelligence Pipeline",
     page_icon="🚀",
     layout="wide",
     initial_sidebar_state="expanded"
