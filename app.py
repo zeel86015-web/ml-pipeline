@@ -305,15 +305,22 @@ if st.session_state["stepper"] == 4:
 if st.session_state["stepper"] == 5:
     st.title("🎯 Step 5 — Feature Selection")
     
-    df_used = st.session_state.get("df_clean", df.select_dtypes(include=np.number))
-    if df_used.shape[1] < 2:
-        st.error("At least 2 numeric columns required.")
-        st.session_state["stepper"] = 4; st.rerun()
+    df_used = st.session_state.get("df_clean", df)
+    target = st.session_state.get("target")
+    
+    # Ensure target is valid
+    if target not in df_used.columns:
+        st.error("Target feature not found in the cleaned dataset. Please re-select in Step 2.")
+        st.session_state["stepper"] = 2; st.rerun()
 
-    target = st.session_state["target"]
-    X = df_used.drop(columns=[target]).fillna(0)
+    # Filter only numeric columns for selection algorithms
+    X = df_used.drop(columns=[target]).select_dtypes(include=np.number).fillna(0)
     y = df_used[target]
     
+    if X.empty:
+        st.error("No numerical features available for selection. Please check your data.")
+        st.session_state["stepper"] = 4; st.rerun()
+
     method = st.selectbox("Selection Method", ["Variance Threshold", "Correlation Analysis", "Information Gain"])
     
     if method == "Variance Threshold":
@@ -450,3 +457,4 @@ if st.session_state["stepper"] == 9:
         if st.button("🔄 Reset Environment"):
             st.session_state.clear()
             st.rerun()
+            
