@@ -2,513 +2,568 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import plotly.express as px
-from sklearn.model_selection import train_test_split, StratifiedKFold, KFold, cross_validate, GridSearchCV, RandomizedSearchCV
-from sklearn.preprocessing import StandardScaler, LabelEncoder, MinMaxScaler
-from sklearn.svm import SVC, SVR
-from sklearn.neighbors import KNeighborsClassifier, KNeighborsRegressor
-from sklearn.linear_model import LogisticRegression, LinearRegression
-from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor, IsolationForest
-from sklearn.cluster import DBSCAN, OPTICS, KMeans
+import plotly.graph_objects as go
 from sklearn.decomposition import PCA
-from sklearn.feature_selection import VarianceThreshold, mutual_info_classif, mutual_info_regression
-from sklearn.metrics import (
-    accuracy_score, precision_score, recall_score, f1_score,
-    confusion_matrix, r2_score, mean_squared_error, mean_absolute_error
+from sklearn.preprocessing import StandardScaler, LabelEncoder
+from sklearn.model_selection import train_test_split, KFold, cross_validate, GridSearchCV, RandomizedSearchCV
+from sklearn.linear_model import LinearRegression, LogisticRegression
+from sklearn.svm import SVC, SVR
+from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
+from sklearn.cluster import KMeans
+from sklearn.metrics import mean_squared_error, r2_score, accuracy_score, classification_report, f1_score
+from sklearn.feature_selection import VarianceThreshold, SelectKBest, mutual_info_classif, mutual_info_regression
+from sklearn.impute import SimpleImputer
+from sklearn.ensemble import IsolationForest
+from sklearn.cluster import DBSCAN, OPTICS
+import io
+
+# Set page config for a premium feel
+st.set_page_config(
+    page_title="ML Intelligence Pipeline",
+    page_icon="🚀",
+    layout="wide",
+    initial_sidebar_state="expanded"
 )
-
-# ─────────────────────────── CONFIG ───────────────────────────
-st.set_page_config(page_title="Advanced ML Intelligence Dashboard", layout="wide")
-
-# Modern Premium CSS
+# Custom CSS for glassmorphism and premium look
 st.markdown("""
 <style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
-    
-    html, body, [class*="css"] {
+    .main {
+        background-color: #0e1117;
+    }
+    .stApp {
+        background: radial-gradient(circle at top right, #1e293b, #0f172a, #020617);
+        color: #f8fafc;
+    }
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 10px;
+        background-color: rgba(255, 255, 255, 0.05);
+        padding: 10px 20px;
+        border-radius: 15px;
+        backdrop-filter: blur(10px);
+    }
+    .stTabs [data-baseweb="tab"] {
+        height: 50px;
+        background-color: transparent;
+        border-radius: 10px;
+        color: #94a3b8;
+        font-weight: 600;
+        transition: all 0.3s ease;
+    }
+    .stTabs [aria-selected="true"] {
+        background-color: #3b82f6 !important;
+        color: white !important;
+        box-shadow: 0 4px 15px rgba(59, 130, 246, 0.5);
+    }
+    .stButton>button {
+        background: linear-gradient(90deg, #3b82f6 0%, #2563eb 100%);
+        color: white;
+        border: none;
+        border-radius: 10px;
+        padding: 10px 25px;
+        font-weight: 600;
+        transition: all 0.3s ease;
+    }
+    .stButton>button:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 5px 15px rgba(37, 99, 235, 0.4);
+    }
+    .card {
+        background: rgba(255, 255, 255, 0.03);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        padding: 20px;
+        border-radius: 15px;
+        backdrop-filter: blur(12px);
+        margin-bottom: 20px;
+    }
+    h1, h2, h3 {
+        color: #f1f5f9;
         font-family: 'Inter', sans-serif;
     }
-    
-    .main {
-        background: linear-gradient(135deg, #f8faff 0%, #eff2f7 100%);
-    }
-    
-    .stMetric {
-        background: rgba(255, 255, 255, 0.7);
-        backdrop-filter: blur(10px);
-        padding: 20px;
-        border-radius: 12px;
-        border: 1px solid rgba(255, 255, 255, 0.3);
-        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
-    }
-    
-    .info-box {
-        background: rgba(74, 124, 255, 0.05);
-        border-left: 5px solid #4a7cff;
-        padding: 1.5rem;
-        border-radius: 8px;
-        margin-bottom: 2rem;
-        color: #1e293b;
-        font-size: 0.95rem;
-        line-height: 1.6;
-    }
-    
-    .step-header {
-        color: #1e293b;
-        font-weight: 700;
-        border-bottom: 2px solid #e2e8f0;
-        padding-bottom: 0.5rem;
-        margin-top: 2rem;
-        margin-bottom: 1rem;
-    }
-    
-    .glass-card {
-        background: rgba(255, 255, 255, 0.8);
-        backdrop-filter: blur(8px);
-        padding: 24px;
-        border-radius: 16px;
-        border: 1px solid rgba(255, 255, 255, 0.4);
-        box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
-        margin-bottom: 1.5rem;
-    }
-    
-    div.stButton > button {
-        background: linear-gradient(90deg, #4a7cff 0%, #3b82f6 100%);
-        color: white;
-        border-radius: 8px;
-        padding: 0.6rem 2rem;
-        font-weight: 600;
-        border: none;
-        transition: all 0.3s ease;
-        box-shadow: 0 4px 6px rgba(59, 130, 246, 0.2);
-    }
-    
-    div.stButton > button:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 6px 12px rgba(59, 130, 246, 0.3);
-        background: linear-gradient(90deg, #3b82f6 0%, #2563eb 100%);
+    .highlight {
+        color: #3b82f6;
+        font-weight: bold;
     }
 </style>
 """, unsafe_allow_html=True)
 
-st.markdown("""
-<style>
-.main { background-color: #f5f7f9; }
-[data-testid="stMetric"] {
-    background-color: #ffffff;
-    padding: 15px;
-    border-radius: 10px;
-    box-shadow: 0px 2px 10px rgba(0,0,0,0.05);
-}
-.info-box {
-    background-color: #eef4ff;
-    border-left: 4px solid #4a7cff;
-    padding: 12px 16px;
-    border-radius: 6px;
-    margin-bottom: 16px;
-    font-size: 0.93em;
-    color: #1a1a2e;
-}
-</style>
-""", unsafe_allow_html=True)
+# Helper function for session state initialization
+def init_session_state():
+    if 'data' not in st.session_state:
+        st.session_state.data = None
+    if 'target' not in st.session_state:
+        st.session_state.target = None
+    if 'problem_type' not in st.session_state:
+        st.session_state.problem_type = "Classification"
+    if 'features' not in st.session_state:
+        st.session_state.features = []
+    if 'steps_completed' not in st.session_state:
+        st.session_state.steps_completed = 0
 
-# ─────────────────────────── INITIALIZATION ───────────────────────────
-if "stepper" not in st.session_state:
-    st.session_state["stepper"] = 1
-if "df" not in st.session_state:
-    st.session_state["df"] = None
-if "problem_type" not in st.session_state:
-    st.session_state["problem_type"] = "Classification"
+def main():
+    init_session_state()
 
-# ─────────────────────────── HELPERS ───────────────────────────
-def info_box(text):
-    st.markdown(f'<div class="info-box">{text}</div>', unsafe_allow_html=True)
+    st.title("🚀 NexuStream ML Intelligence Pipeline")
+    st.title("🚀 ML Intelligence Pipeline")
+    st.markdown("Transform raw data into predictive insights with our state-of-the-art automated pipeline.")
 
-# ── NAVIGATION STEPS ──
-STEPS = [
-    "Problem Setup",
-    "Data Ingestion & PCA",
-    "EDA",
-    "Data Engineering",
-    "Feature Selection",
-    "Data Split",
-    "Model Selection",
-    "Training & K-Fold",
-    "Hyperparameter Tuning"
-]
+    # Horizontal Step-based Navigation using Tabs
+    tabs = st.tabs([
+        "🎯 Problem Type", 
+        "📥 Data Input", 
+        "📊 EDA", 
+        "🛠️ Data Cleaning", 
+        "🧬 Feature Selection", 
+        "✂️ Data Split", 
+        "🤖 Model Selection", 
+        "⚙️ Training & Validation",
+        "📈 Metrics & Tuning"
+    ])
 
-# Horizontal Stepper Progress Bar
-st.markdown('<div class="step-header">Progress Hub</div>', unsafe_allow_html=True)
-cols = st.columns(len(STEPS))
-for i, step_name in enumerate(STEPS):
-    with cols[i]:
-        color = "#4a7cff" if st.session_state["stepper"] == i + 1 else "#94a3b8"
-        bg = "rgba(74, 124, 255, 0.1)" if st.session_state["stepper"] == i + 1 else "transparent"
-        st.markdown(f"""
-            <div style="text-align:center; padding: 10px; border-radius: 8px; background: {bg}; border-bottom: 3px solid {color};">
-                <small style="color: {color}; font-weight: bold;">Step {i+1}</small><br>
-                <span style="font-size: 0.75rem; color: #1e293b;">{step_name}</span>
-            </div>
-            """, unsafe_allow_html=True)
+    # --- TAB 1: PROBLEM TYPE ---
+    with tabs[0]:
+        st.header("Select Your Objective")
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("Classification", use_container_width=True):
+                st.session_state.problem_type = "Classification"
+                st.success("Target set to Classification")
+        with col2:
+            if st.button("Regression", use_container_width=True):
+                st.session_state.problem_type = "Regression"
+                st.success("Target set to Regression")
 
-st.markdown("<br>", unsafe_allow_html=True)
+        st.info(f"Current selection: **{st.session_state.problem_type}**")
 
-# ─────────────────────────── STEP 1: PROBLEM SETUP ───────────────────────────
-if st.session_state["stepper"] == 1:
-    st.title("🎯 Step 1 — Problem Intelligence")
-    st.markdown('<div class="glass-card">', unsafe_allow_html=True)
-    
-    st.session_state["problem_type"] = st.radio(
-        "Select the type of challenge you want to solve:",
-        ["Classification", "Regression"],
-        help="Classification predicts categories (e.g., Yes/No), Regression predicts continuous numbers (e.g., Price)."
-    )
-    
-    uploaded_file = st.file_uploader("� Upload your CSV dataset", type=["csv"])
-    if uploaded_file is not None:
-        st.session_state["df"] = pd.read_csv(uploaded_file)
-        st.success("Dataset intelligence absorbed. Proceed to next step.")
-        if st.button("Continue to Data Ingestion ➡️"):
-            st.session_state["stepper"] = 2
-            st.rerun()
-    st.markdown('</div>', unsafe_allow_html=True)
-    st.stop()
+    # --- TAB 2: DATA INPUT ---
+    with tabs[1]:
+        st.header("Upload Dataset")
 
-# Ensure DF is loaded
-df = st.session_state["df"]
-if df is None:
-    st.warning("Please upload a dataset in Step 1.")
-    st.session_state["stepper"] = 1
-    st.rerun()
+        # Sample Data Option
+        col_s1, col_s2 = st.columns([1, 4])
+        with col_s1:
+            if st.button("Load Sample Data (Titanic)", use_container_width=True):
+                # Using a generic URL for titanic or iris
+                url = "https://raw.githubusercontent.com/datasciencedojo/datasets/master/titanic.csv"
+                st.session_state.data = pd.read_csv(url)
+                st.session_state.problem_type = "Classification"
+                st.success("Sample data loaded!")
 
-# ─────────────────────────── STEP 2: DATA INGESTION & PCA ───────────────────────────
-if st.session_state["stepper"] == 2:
-    st.title("🧬 Step 2 — Data Ingestion & Shape Intelligence")
-    
-    info_box("Define your target and visualize the global structure of your data using PCA.")
-    
-    col1, col2 = st.columns([1, 2])
-    with col1:
-        target = st.selectbox("Select Target Feature", df.columns, index=len(df.columns)-1)
-        st.session_state["target"] = target
-        st.session_state["task"] = st.session_state["problem_type"].lower()
-    
-    with col2:
-        num_df = df.select_dtypes(include=np.number).dropna()
-        if num_df.shape[1] >= 2:
-            st.subheader("Global Data Shape (PCA)")
-            pca_feats = st.multiselect("Select features for PCA view", num_df.columns, default=list(num_df.columns)[:5])
-            if len(pca_feats) >= 2:
-                pca = PCA(n_components=2)
-                comps = pca.fit_transform(StandardScaler().fit_transform(num_df[pca_feats]))
-                pca_df = pd.DataFrame(comps, columns=['PC1', 'PC2'])
-                fig = px.scatter(pca_df, x='PC1', y='PC2', title="2D Projection of Data Structure",
-                                 template="plotly_white", color_discrete_sequence=["#4a7cff"])
+        # Local File Path Option
+        local_path = st.text_input("Or enter local file path (e.g., /home/akshonite/Downloads/tmdb_5000_credits.csv)")
+        if st.button("Load from Path"):
+            try:
+                if local_path.endswith('.csv'):
+                    st.session_state.data = pd.read_csv(local_path)
+                else:
+                    st.session_state.data = pd.read_excel(local_path)
+                st.success(f"Data loaded from {local_path}")
+            except Exception as e:
+                st.error(f"Error loading file: {e}")
+
+        uploaded_file = st.file_uploader("Or Browse your own CSV or Excel file", type=["csv", "xlsx"])
+
+        if uploaded_file or st.session_state.data is not None:
+            if uploaded_file:
+                try:
+                    if uploaded_file.name.endswith('.csv'):
+                        st.session_state.data = pd.read_csv(uploaded_file)
+                    else:
+                        st.session_state.data = pd.read_excel(uploaded_file)
+                    st.success("File uploaded successfully!")
+                except Exception as e:
+                    st.error(f"Error processing upload: {e}")
+
+            df = st.session_state.data
+            st.dataframe(df.head(), use_container_width=True)
+
+            col1, col2 = st.columns(2)
+            with col1:
+                st.session_state.target = st.selectbox("Select Target Feature", df.columns)
+            with col2:
+                features = [col for col in df.columns if col != st.session_state.target]
+                st.session_state.features = st.multiselect("Select Input Features", features, default=features)
+
+            if st.session_state.features:
+                st.subheader("Data Visualizations")
+
+                # PCA Visualization
+                numeric_df = df[st.session_state.features].select_dtypes(include=[np.number]).dropna()
+                if not numeric_df.empty and len(st.session_state.features) >= 2:
+                    scaler = StandardScaler()
+                    scaled_data = scaler.fit_transform(numeric_df)
+                    pca = PCA(n_components=min(3, len(numeric_df.columns)))
+                    pca_result = pca.fit_transform(scaled_data)
+
+                    if pca_result.shape[1] >= 2:
+                        pca_df = pd.DataFrame(pca_result, columns=[f'PC{i+1}' for i in range(pca_result.shape[1])])
+
+                        # Add target for coloring if numeric or low cardinality
+                        if df[st.session_state.target].nunique() < 20:
+                             pca_df['Target'] = df.loc[numeric_df.index, st.session_state.target].values
+                             fig = px.scatter(pca_df, x='PC1', y='PC2', color='Target', title="2D PCA Visualization", template="plotly_dark")
+                        else:
+                             fig = px.scatter(pca_df, x='PC1', y='PC2', title="2D PCA Visualization", template="plotly_dark")
+
+                        st.plotly_chart(fig, use_container_width=True)
+
+                    st.write(f"Overall Data Shape: {df.shape}")
+                    st.write(f"Selected Features Sub-shape: {df[st.session_state.features].shape}")
+                else:
+                    st.warning("Please select at least 2 numeric features for PCA visualization.")
+
+    # --- TAB 3: EDA ---
+    with tabs[2]:
+        if st.session_state.data is not None:
+            st.header("Exploratory Data Analysis")
+            df = st.session_state.data
+
+            col1, col2, col3 = st.columns(3)
+            col1.metric("Rows", df.shape[0])
+            col2.metric("Columns", df.shape[1])
+            col3.metric("Missing Values", df.isna().sum().sum())
+
+            tab_corr, tab_dist, tab_stats = st.tabs(["Correlation Matrix", "Distributions", "Summary Stats"])
+
+            with tab_corr:
+                numeric_cols = df.select_dtypes(include=[np.number]).columns
+                if len(numeric_cols) > 1:
+                    corr = df[numeric_cols].corr()
+                    fig = px.imshow(corr, text_auto=True, color_continuous_scale='RdBu_r', title="Feature Correlation Matrix", template="plotly_dark")
+                    st.plotly_chart(fig, use_container_width=True)
+                else:
+                    st.write("Not enough numeric columns for correlation.")
+
+            with tab_dist:
+                feature_to_plot = st.selectbox("Choose feature to visualize distribution", df.columns)
+                fig = px.histogram(df, x=feature_to_plot, color=st.session_state.target if df[st.session_state.target].nunique() < 10 else None, 
+                                   marginal="box", title=f"Distribution of {feature_to_plot}", template="plotly_dark")
                 st.plotly_chart(fig, use_container_width=True)
+
+            with tab_stats:
+                st.table(df.describe().T)
         else:
-            st.warning("Insufficient numerical features for PCA visualization.")
+            st.warning("Please upload data first.")
 
-    if st.button("Move to EDA 🔍"):
-        st.session_state["stepper"] = 3
-        st.rerun()
-    
-    if st.button("⬅️ Back"):
-        st.session_state["stepper"] = 1
-        st.rerun()
+    # --- TAB 4: DATA ENGINEERING & CLEANING ---
+    with tabs[3]:
+        if st.session_state.data is not None:
+            st.header("Data Cleaning & Engineering")
+            df = st.session_state.data.copy()
 
+            st.subheader("1. Imputation (Handling Missing Values)")
+            strategy = st.radio("Imputation Strategy", ["Mean", "Median", "Mode", "Constant (0)"], horizontal=True)
 
-# ─────────────────────────── STEP 3: EDA ───────────────────────────
-if st.session_state["stepper"] == 3:
-    st.title("🔍 Step 3 — Exploratory Data Analysis")
-    
-    numeric_df = df.select_dtypes(include=np.number)
-    if numeric_df.empty:
-        st.warning("No numeric columns found.")
-        st.session_state["stepper"] = 4
-        st.rerun()
+            if st.button("Apply Imputation"):
+                for col in df.columns:
+                    if df[col].isnull().any():
+                        if df[col].dtype in [np.float64, np.int64]:
+                            if strategy == "Mean":
+                                df[col].fillna(df[col].mean(), inplace=True)
+                            elif strategy == "Median":
+                                df[col].fillna(df[col].median(), inplace=True)
+                            elif strategy == "Mode":
+                                df[col].fillna(df[col].mode()[0], inplace=True)
+                            else:
+                                df[col].fillna(0, inplace=True)
+                        else:
+                            df[col].fillna(df[col].mode()[0], inplace=True)
+                st.session_state.data = df
+                st.success("Missing values imputed.")
 
-    tab_dist, tab_corr = st.tabs(["📊 Distributions", "🌡️ Correlations"])
-    
-    with tab_dist:
-        feature = st.selectbox("Column to Inspect", numeric_df.columns)
-        fig = px.histogram(numeric_df, x=feature, marginal="box", 
-                           color_discrete_sequence=["#4a7cff"], 
-                           title=f"Distribution of {feature}",
-                           template="plotly_white")
-        st.plotly_chart(fig, use_container_width=True)
-        
-    with tab_corr:
-        fig_corr = px.imshow(numeric_df.corr().round(2), text_auto=True, 
-                             color_continuous_scale="RdBu_r", 
-                             title="Correlation Matrix",
-                             template="plotly_white")
-        st.plotly_chart(fig_corr, use_container_width=True)
+            st.divider()
 
-    c1, c2 = st.columns(2)
-    with c1:
-        if st.button("⬅️ Back"): st.session_state["stepper"] = 2; st.rerun()
-    with c2:
-        if st.button("Continue to Data Engineering 🧹"): st.session_state["stepper"] = 4; st.rerun()
+            st.subheader("2. Outlier Detection")
+            method = st.selectbox("Outlier Detection Method", ["IQR", "Isolation Forest", "DBSCAN", "OPTICS"])
 
-# ─────────────────────────── STEP 4: DATA ENGINEERING ───────────────────────────
-if st.session_state["stepper"] == 4:
-    st.title("🧹 Step 4 — Data Engineering & Cleaning")
-    
-    df_clean = df.copy()
-    num_cols = df_clean.select_dtypes(include=np.number).columns.tolist()
+            outliers_found = pd.Series([False] * len(df))
 
-    st.markdown('<div class="step-header">Imputation & Outliers</div>', unsafe_allow_html=True)
-    col1, col2 = st.columns(2)
-    with col1:
-        impute_method = st.selectbox("Strategy", ["None", "Drop Rows", "Mean", "Median", "Mode"])
-    with col2:
-        outlier_method = st.selectbox("Algorithm", ["None", "IQR", "Isolation Forest", "DBSCAN", "OPTICS"])
-    
-    # Imputation
-    if impute_method == "Drop Rows": df_clean = df_clean.dropna()
-    elif impute_method in ["Mean", "Median", "Mode"]:
-        for col in num_cols:
-            val = df_clean[col].mean() if impute_method == "Mean" else (df_clean[col].median() if impute_method == "Median" else df_clean[col].mode()[0])
-            df_clean[col] = df_clean[col].fillna(val)
+            numeric_df = df.select_dtypes(include=[np.number])
+            if method == "IQR":
+                Q1 = numeric_df.quantile(0.25)
+                Q3 = numeric_df.quantile(0.75)
+                IQR = Q3 - Q1
+                outliers_found = ((numeric_df < (Q1 - 1.5 * IQR)) | (numeric_df > (Q3 + 1.5 * IQR))).any(axis=1)
+            elif method == "Isolation Forest":
+                clf = IsolationForest(contamination=0.05, random_state=42)
+                preds = clf.fit_predict(numeric_df.fillna(0))
+                outliers_found = (preds == -1)
+            elif method == "DBSCAN":
+                db = DBSCAN(eps=3, min_samples=2)
+                preds = db.fit_predict(StandardScaler().fit_transform(numeric_df.fillna(0)))
+                outliers_found = (preds == -1)
+            elif method == "OPTICS":
+                opt = OPTICS(min_samples=5)
+                preds = opt.fit_predict(StandardScaler().fit_transform(numeric_df.fillna(0)))
+                outliers_found = (preds == -1)
 
-    # Outliers
-    if outlier_method != "None":
-        X_out = df_clean[num_cols].fillna(0)
-        if outlier_method == "IQR":
-            Q1, Q3 = X_out.quantile(0.25), X_out.quantile(0.75)
-            IQR = Q3 - Q1
-            mask = ((X_out < (Q1 - 1.5 * IQR)) | (X_out > (Q3 + 1.5 * IQR))).any(axis=1)
-            outliers = X_out.index[mask].tolist()
+            num_outliers = outliers_found.sum()
+            st.write(f"Detected **{num_outliers}** outliers.")
+
+            if num_outliers > 0:
+                col1, col2 = st.columns(2)
+                with col1:
+                    if st.button("Remove Outliers"):
+                        st.session_state.data = df[~outliers_found]
+                        st.success(f"Removed {num_outliers} outliers.")
+                        st.rerun()
+                with col2:
+                    if st.button("Keep Outliers"):
+                        st.info("Outliers retained.")
+
+            st.subheader("Quick Data Delete")
+            rows_to_drop = st.multiselect("Select Row Indices to Delete", df.index.tolist())
+            if st.button("Delete Selected Rows"):
+                st.session_state.data = df.drop(index=rows_to_drop)
+                st.success(f"Deleted {len(rows_to_drop)} rows.")
+                st.rerun()
+
         else:
-            clf = IsolationForest() if outlier_method == "Isolation Forest" else (DBSCAN() if outlier_method == "DBSCAN" else OPTICS())
-            preds = clf.fit_predict(StandardScaler().fit_transform(X_out))
-            outliers = X_out.index[preds == -1].tolist()
-        
-        if outliers:
-            st.warning(f"Detected {len(outliers)} outliers.")
-            if st.button("Purge Outliers 🗑️"):
-                df_clean = df_clean.drop(index=outliers)
-                st.success("Outliers eliminated.")
+            st.warning("Please upload data first.")
 
-    st.session_state["df_clean"] = df_clean
-    st.markdown('<div class="step-header">Data Preview</div>', unsafe_allow_html=True)
-    st.dataframe(df_clean.head(), use_container_width=True)
-    
-    c1, c2 = st.columns(2)
-    with c1:
-        if st.button("⬅️ Back"): st.session_state["stepper"] = 3; st.rerun()
-    with c2:
-        if st.button("Move to Feature Selection 🎯"): st.session_state["stepper"] = 5; st.rerun()
+    # --- TAB 5: FEATURE SELECTION ---
+    with tabs[4]:
+        if st.session_state.data is not None:
+            st.header("Feature Selection")
+            df = st.session_state.data
+            y = df[st.session_state.target]
+            X = df[st.session_state.features].select_dtypes(include=[np.number])
 
+            # Encode target if classification
+            if st.session_state.problem_type == "Classification" and y.dtype == object:
+                y = LabelEncoder().fit_transform(y.astype(str))
 
+            st.write("Only numeric features are considered for automated selection.")
 
-# ─────────────────────────── STEP 5: FEATURE SELECTION ───────────────────────────
-if st.session_state["stepper"] == 5:
-    st.title("🎯 Step 5 — Feature Selection")
-    
-    df_used = st.session_state.get("df_clean", df)
-    target = st.session_state.get("target")
-    
-    # Ensure target is valid
-    if target not in df_used.columns:
-        st.error("Target feature not found in the cleaned dataset. Please re-select in Step 2.")
-        st.session_state["stepper"] = 2; st.rerun()
+            # 1. Variance Threshold
+            st.subheader("1. Variance Threshold")
+            threshold = st.slider("Min Variance", 0.0, 1.0, 0.0, 0.05)
+            if st.button("Apply Variance Filter"):
+                vt = VarianceThreshold(threshold=threshold)
+                vt.fit(X)
+                selected_vars = X.columns[vt.get_support()].tolist()
+                st.write(f"Selected Features: {selected_vars}")
+                st.session_state.features = selected_vars
 
-    # Filter only numeric columns for selection algorithms
-    X = df_used.drop(columns=[target]).select_dtypes(include=np.number).fillna(0)
-    y = df_used[target]
-    
-    if X.empty:
-        st.error("No numerical features available for selection. Please check your data.")
-        st.session_state["stepper"] = 4; st.rerun()
+            # 2. Correlation Filter
+            st.subheader("2. Correlation with Target")
+            corr_thresh = st.slider("Min Absolute Correlation with Target", 0.0, 1.0, 0.1, 0.05)
+            if st.button("Apply Correlation Filter"):
+                # Join X and y for correlation
+                temp_df = X.copy()
+                temp_df['__target__'] = y
+                correlations = temp_df.corr()['__target__'].abs().sort_values(ascending=False)
+                selected_corr = correlations[correlations >= corr_thresh].index.tolist()
+                selected_corr = [c for c in selected_corr if c != '__target__']
+                st.session_state.features = selected_corr
+                st.write(f"Selected Features: {selected_corr}")
 
-    method = st.selectbox("Selection Method", ["Variance Threshold", "Correlation Analysis", "Information Gain"])
-    
-    if method == "Variance Threshold":
-        vt = VarianceThreshold(threshold=0.1).fit(X)
-        scores = pd.Series(vt.variances_, index=X.columns).sort_values()
-    elif method == "Correlation Analysis":
-        # Correlation only works on numeric data. We must ensure target is numeric too for this calc.
-        temp_df = X.copy()
-        if st.session_state["problem_type"] == "Classification":
-            le = LabelEncoder()
-            temp_df[target] = le.fit_transform(y)
+            # 3. Information Gain / Mutual Info
+            st.subheader("3. Information Gain")
+            if not X.empty and len(X.columns) > 0:
+                k_max = len(X.columns)
+                k_default = min(5, k_max)
+                k_best = st.number_input("Select Top K Features", 1, k_max, k_default)
+                if st.button("Apply Mutual Information"):
+                    with st.spinner("Calculating Mutual Information..."):
+                        if st.session_state.problem_type == "Classification":
+                            mi = mutual_info_classif(X.fillna(0), y)
+                        else:
+                            mi = mutual_info_regression(X.fillna(0), y)
+
+                        mi_series = pd.Series(mi, index=X.columns).sort_values(ascending=False)
+                        selected_mi = mi_series.head(k_best).index.tolist()
+                        st.session_state.features = selected_mi
+                        st.write(f"Selected Features: {selected_mi}")
+
+                        fig = px.bar(mi_series.head(k_best), title="Top Features by Information Gain", template="plotly_dark")
+                        st.plotly_chart(fig, use_container_width=True)
+            else:
+                st.warning("No numeric features available for Mutual Information calculation.")
+
         else:
-            temp_df[target] = pd.to_numeric(y, errors='coerce').fillna(0)
-        
-        scores = temp_df.corr()[target].abs().drop(target).sort_values()
-    else:
-        with st.spinner("Calculating Mutual info..."):
-            if st.session_state["problem_type"] == "Classification":
-                le = LabelEncoder()
-                y_encoded = le.fit_transform(y)
-                mi = mutual_info_classif(X, y_encoded)
+            st.warning("Please upload data first.")
+
+    # --- TAB 6: DATA SPLIT ---
+    with tabs[5]:
+         if st.session_state.data is not None:
+            st.header("Train-Test Split")
+            test_size = st.slider("Test Size (%)", 10, 50, 20)
+            random_state = st.number_input("Random State", 0, 100, 42)
+
+            if st.button("Perform Split"):
+                df = st.session_state.data
+                X = df[st.session_state.features]
+                y = df[st.session_state.target]
+
+                # Preprocessing
+                # Simple handling of categorical in X
+                X_proc = pd.get_dummies(X)
+
+                st.session_state.X_train, st.session_state.X_test, st.session_state.y_train, st.session_state.y_test = train_test_split(
+                    X_proc, y, test_size=test_size/100, random_state=random_state
+                )
+
+                st.success(f"Data split completed. Train: {st.session_state.X_train.shape[0]}, Test: {st.session_state.X_test.shape[0]}")
+                st.session_state.steps_completed = 6
+         else:
+            st.warning("Please finalize features before splitting.")
+
+    # --- TAB 7: MODEL SELECTION ---
+    with tabs[6]:
+        st.header("Choose Your Model")
+
+        if st.session_state.problem_type == "Classification":
+            model_options = ["Random Forest", "SVM", "Logistic Regression", "K-Means"]
+        else:
+            model_options = ["Random Forest", "SVM", "Linear Regression", "K-Means"]
+
+        st.session_state.selected_model = st.selectbox("Model", model_options)
+
+        if st.session_state.selected_model == "SVM":
+            st.session_state.svm_kernel = st.selectbox("Kernel", ["rbf", "linear", "poly"])
+        elif st.session_state.selected_model == "K-Means":
+            st.session_state.km_clusters = st.slider("Number of Clusters", 2, 10, 3)
+            st.info("Note: K-Means is primarily unsupervised, but can be used here for cluster analysis.")
+
+    # --- TAB 8: TRAINING & VALIDATION ---
+    with tabs[7]:
+        if 'X_train' in st.session_state:
+            st.header("Model Training & K-Fold Validation")
+            k_fold = st.number_input("Value of K (Cross Validation)", 2, 10, 5)
+
+            if st.button("Train Model"):
+                with st.spinner("Training in progress..."):
+                    # Initialize Model
+                    if st.session_state.problem_type == "Classification":
+                        if st.session_state.selected_model == "Random Forest":
+                            model = RandomForestClassifier()
+                        elif st.session_state.selected_model == "SVM":
+                            model = SVC(kernel=st.session_state.get('svm_kernel', 'rbf'))
+                        elif st.session_state.selected_model == "Logistic Regression":
+                            model = LogisticRegression()
+                        else:
+                            model = KMeans(n_clusters=st.session_state.get('km_clusters', 3))
+                    else:
+                        if st.session_state.selected_model == "Random Forest":
+                            model = RandomForestRegressor()
+                        elif st.session_state.selected_model == "SVM":
+                            model = SVR(kernel=st.session_state.get('svm_kernel', 'rbf'))
+                        elif st.session_state.selected_model == "Linear Regression":
+                            model = LinearRegression()
+                        else:
+                            model = KMeans(n_clusters=st.session_state.get('km_clusters', 3))
+
+                    # Encode target if necessary
+                    y_train = st.session_state.y_train
+                    if st.session_state.problem_type == "Classification" and y_train.dtype == object:
+                        le = LabelEncoder()
+                        y_train = le.fit_transform(y_train.astype(str))
+                        st.session_state.label_encoder = le
+
+                    # Fit and Cross Validate
+                    if st.session_state.selected_model != "K-Means":
+                        cv_results = cross_validate(model, st.session_state.X_train, y_train, cv=k_fold, return_train_score=True)
+                        model.fit(st.session_state.X_train, y_train)
+                        st.session_state.trained_model = model
+
+                        st.success("Training Complete!")
+                        st.subheader("K-Fold Results")
+                        cv_df = pd.DataFrame(cv_results)
+                        st.dataframe(cv_df, use_container_width=True)
+
+                        # Store for metrics
+                        st.session_state.cv_train_mean = cv_results['train_score'].mean()
+                        st.session_state.cv_test_mean = cv_results['test_score'].mean()
+                    else:
+                        model.fit(st.session_state.X_train)
+                        st.session_state.trained_model = model
+                        st.success("Clustering Complete!")
+        else:
+            st.warning("Please split data first.")
+
+    # --- TAB 9: METRICS & HYPERPARAMETER TUNING ---
+    with tabs[8]:
+        if 'trained_model' in st.session_state:
+            st.header("Performance Metrics & Tuning")
+
+            # 1. Metrics
+            st.subheader("1. Evaluation Metrics")
+            model = st.session_state.trained_model
+            X_test = st.session_state.X_test
+            y_test = st.session_state.y_test
+
+            if st.session_state.problem_type == "Classification" and hasattr(st.session_state, 'label_encoder'):
+                y_test = st.session_state.label_encoder.transform(y_test.astype(str))
+
+            if st.session_state.selected_model != "K-Means":
+                preds = model.predict(X_test)
+
+                if st.session_state.problem_type == "Classification":
+                    acc = accuracy_score(y_test, preds)
+                    f1 = f1_score(y_test, preds, average='weighted')
+                    st.metric("Test Accuracy", f"{acc:.4f}")
+                    st.metric("F1 Score (Weighted)", f"{f1:.4f}")
+                    st.text("Classification Report:")
+                    st.code(classification_report(y_test, preds))
+                else:
+                    mse = mean_squared_error(y_test, preds)
+                    r2 = r2_score(y_test, preds)
+                    st.metric("Test MSE", f"{mse:.4f}")
+                    st.metric("Test R2 Score", f"{r2:.4f}")
+
+                # Underfitting/Overfitting Check
+                st.subheader("Overfitting/Underfitting Diagnosis")
+                train_score = st.session_state.cv_train_mean
+                test_score = st.session_state.cv_test_mean
+                st.write(f"Mean Train CV Score: {train_score:.4f}")
+                st.write(f"Mean Test CV Score: {test_score:.4f}")
+
+                diff = train_score - test_score
+                if diff > 0.15:
+                    st.error("⚠️ The model is likely **OVERFITTING**. (Large gap between train and test)")
+                elif train_score < 0.6:
+                    st.warning("⚠️ The model is likely **UNDERFITTING**. (Low train performance)")
+                else:
+                    st.success("✅ The model seems **WELL-BALANCED**.")
+
+            # 2. Hyperparameter Tuning
+            st.divider()
+            st.subheader("2. Hyperparameter Tuning")
+            search_type = st.selectbox("Search Method", ["Grid Search", "Random Search"])
+
+            if st.session_state.selected_model == "Random Forest":
+                 param_grid = {
+                     'n_estimators': [50, 100, 200],
+                     'max_depth': [None, 10, 20],
+                     'min_samples_split': [2, 5]
+                 }
+            elif st.session_state.selected_model == "SVM":
+                 param_grid = {
+                     'C': [0.1, 1, 10],
+                     'gamma': ['scale', 'auto']
+                 }
             else:
-                y_numeric = pd.to_numeric(y, errors='coerce').fillna(0)
-                mi = mutual_info_regression(X, y_numeric)
-            scores = pd.Series(mi, index=X.columns).sort_values()
+                 param_grid = {}
+                 st.write("Tuning options limited for this model.")
 
-    fig = px.bar(scores, orientation="h", title=f"Feature Scores ({method})", template="plotly_white", color_discrete_sequence=["#4a7cff"])
-    st.plotly_chart(fig, use_container_width=True)
-    
-    num_keep = st.slider("Number of Features to keep", 1, len(X.columns), min(5, len(X.columns)))
-    st.session_state["selected_features"] = scores.sort_values(ascending=False).head(num_keep).index.tolist()
-    
-    c1, c2 = st.columns(2)
-    with c1:
-        if st.button("⬅️ Back"): st.session_state["stepper"] = 4; st.rerun()
-    with c2:
-        if st.button("Continue to Data Split ✂️"): st.session_state["stepper"] = 6; st.rerun()
+            if param_grid and st.button("Run Hyperparameter Optimization"):
+                with st.spinner("Optimizing..."):
+                    if search_type == "Grid Search":
+                        search = GridSearchCV(model, param_grid, cv=3)
+                    else:
+                        search = RandomizedSearchCV(model, param_grid, n_iter=5, cv=3)
 
-# ─────────────────────────── STEP 6: DATA SPLIT ───────────────────────────
-if st.session_state["stepper"] == 6:
-    st.title("✂️ Step 6 — Data Split")
-    test_size = st.slider("Test Set Size (%)", 10, 50, 20)
-    st.session_state["test_size"] = test_size / 100
-    
-    info_box(f"Generating splits: **{100-test_size}% Train** and **{test_size}% Test** samples.")
-    
-    c1, c2 = st.columns(2)
-    with c1:
-        if st.button("⬅️ Back"): st.session_state["stepper"] = 5; st.rerun()
-    with c2:
-        if st.button("Continue to Model Selection 🤖"): st.session_state["stepper"] = 7; st.rerun()
+                    search.fit(st.session_state.X_train, st.session_state.y_train)
+                    st.write("Best Parameters:", search.best_params_)
+                    st.write("Best Score:", search.best_score_)
 
-# ─────────────────────────── STEP 7: MODEL SELECTION ───────────────────────────
-if st.session_state["stepper"] == 7:
-    st.title("🤖 Step 7 — Model Selection")
-    
-    if st.session_state["problem_type"] == "Classification":
-        options = ["Logistic Regression", "SVM", "Random Forest", "K-Means"]
-    else:
-        options = ["Linear Regression", "SVM", "Random Forest", "KNN"]
-        
-    st.session_state["model_choice"] = st.selectbox("Algorithm Choice", options)
-    
-    # Kernel selection removed
-    st.session_state["svm_kernel"] = "rbf"
-        
-    c1, c2 = st.columns(2)
-    with c1:
-        if st.button("⬅️ Back"): st.session_state["stepper"] = 6; st.rerun()
-    with c2:
-        if st.button("Continue to Training & K-Fold 🚀"): st.session_state["stepper"] = 8; st.rerun()
+                    # Store original performance
+                    original_score = st.session_state.cv_test_mean
+                    improvement = search.best_score_ - original_score
+                    st.metric("Improvement", f"{improvement:.4f}", delta=f"{improvement:.4f}")
 
-# ─────────────────────────── STEP 8: TRAINING & K-FOLD ───────────────────────────
-if st.session_state["stepper"] == 8:
-    st.title("🚀 Step 8 — Training & K-Fold Validation")
-    
-    k = st.number_input("Value of K for Cross-Validation", 2, 10, 5)
-    
-    if st.button("⚡ Execute Training Cycle"):
-        with st.spinner("Training model with high-fidelity diagnostics..."):
-            df_final = st.session_state.get("df_clean", df)
-            target = st.session_state["target"]
-            
-            # 🛡️ ANTI-LEAKAGE CHECK: Ensure target is NOT in features
-            features = [f for f in st.session_state["selected_features"] if f != target]
-            if len(features) < len(st.session_state["selected_features"]):
-                st.warning("⚠️ Target column was detected in features. It has been filtered out to prevent 100% accuracy leakage.")
-            
-            X = df_final[features].fillna(0)
-            y = df_final[target]
-            
-            if st.session_state["problem_type"] == "Classification":
-                le = LabelEncoder()
-                y = le.fit_transform(y)
-            else:
-                y = pd.to_numeric(y, errors='coerce').fillna(0)
-            
-            X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=st.session_state["test_size"], random_state=42)
-            scaler = StandardScaler()
-            X_train_s = scaler.fit_transform(X_train)
-            X_test_s = scaler.transform(X_test)
-            
-            # Initialization
-            m_type = st.session_state["model_choice"]
-            if m_type == "Logistic Regression": model = LogisticRegression()
-            elif m_type == "Linear Regression": model = LinearRegression()
-            elif m_type == "Random Forest": 
-                model = RandomForestClassifier() if st.session_state["problem_type"] == "Classification" else RandomForestRegressor()
-            elif m_type == "SVM":
-                model = SVC(kernel="rbf", probability=True) if st.session_state["problem_type"] == "Classification" else SVR(kernel="rbf")
-            elif m_type == "K-Means": model = KMeans(n_clusters=len(np.unique(y)))
-            elif m_type == "KNN": model = KNeighborsRegressor()
+        else:
+            st.warning("Please train the model first.")
 
-            model.fit(X_train_s, y_train)
-            
-            y_pred_train = model.predict(X_train_s)
-            y_pred_test = model.predict(X_test_s)
-            
-            st.markdown('<div class="step-header">📊 Intelligent Performance Analysis</div>', unsafe_allow_html=True)
-            
-            c1, c2 = st.columns(2)
-            if st.session_state["problem_type"] == "Classification":
-                ts_s = accuracy_score(y_test, y_pred_test)
-                f1 = f1_score(y_test, y_pred_test, average='weighted')
-                tr_s = accuracy_score(y_train, y_pred_train)
-                
-                with c1:
-                    st.metric("Model Fidelity (Accuracy)", f"{ts_s:.2%}")
-                    info_box(f"Accuracy measures the correct predictions. Your model got **{ts_s:.2%}** of unseen cases right.")
-                with c2:
-                    st.metric("F1-Score (Balance)", f"{f1:.4f}")
-                    info_box("F1-Score marks the balance between precision and recall. Higher is better.")
-                
-                # Confusion Matrix
-                cm = confusion_matrix(y_test, y_pred_test)
-                fig_cm = px.imshow(cm, text_auto=True, title="Confusion Matrix: Actual vs Predicted", color_continuous_scale="RdPu")
-                st.plotly_chart(fig_cm, use_container_width=True)
-            else:
-                ts_s = r2_score(y_test, y_pred_test)
-                mae = mean_absolute_error(y_test, y_pred_test)
-                tr_s = r2_score(y_train, y_pred_train)
-                
-                with c1:
-                    st.metric("R² Score (Explains Variance)", f"{ts_s:.4f}")
-                    info_box(f"R² tells us how much of the data pattern the model captures. **{ts_s:.2f}** is the score.")
-                with c2:
-                    st.metric("Mean Absolute Error", f"{mae:.4f}")
-                    info_box("MAE is the average 'miss' distance. Lower is better.")
-
-            # Generalization Diagnostic
-            st.markdown('<div class="step-header">⚖️ Generalization Diagnostic</div>', unsafe_allow_html=True)
-            if tr_s > ts_s + 0.15:
-                st.warning(f"🚨 **Overfitting Risk.** (Train: {tr_s:.2f} vs Test: {ts_s:.2f})")
-            elif tr_s < 0.3:
-                st.error("🚨 **Underfitting Error.** The model is too simple.")
-            elif ts_s > 0.99 and st.session_state["problem_type"] == "Classification":
-                st.info("💡 **Perfect Score Warning:** This often indicates Data Leakage (target was in features).")
-            else:
-                st.success("✅ **Balanced Learning.** The model generalized well.")
-            
-            st.session_state["trained_model"] = model
-            st.session_state["X_train_optimized"] = X_train_s
-            st.session_state["y_train_optimized"] = y_train
-
-    c1, c2 = st.columns(2)
-    with c1:
-        if st.button("⬅️ Back"): st.session_state["stepper"] = 7; st.rerun()
-    with c2:
-        if st.button("Final Step: Optimization ⚙️"): st.session_state["stepper"] = 9; st.rerun()
-
-# ─────────────────────────── STEP 9: HYPERPARAMETER TUNING ───────────────────────────
-if st.session_state["stepper"] == 9:
-    st.title("⚙️ Step 9 — Hyperparameter Optimization")
-    
-    st.info("Optimize model parameters using Grid/Random Search for maximum performance.")
-    
-    tuning_method = st.radio("Optimization Strategy", ["Grid Search", "Random Search"])
-    
-    if st.button("🔥 Run Optimizer"):
-        st.write("Optimizer Cycle Initiated... Found better configuration for selected model.")
-        st.balloons()
-        st.success("Model hyper-parameters optimized.")
-
-    c1, c2 = st.columns(2)
-    with c1:
-        if st.button("⬅️ Back"): st.session_state["stepper"] = 8; st.rerun()
-    with c2:
-        if st.button("🔄 Reset Environment"):
-            st.session_state.clear()
-            st.rerun()
-            
+if __name__ == "__main__":
+    main()
