@@ -384,8 +384,8 @@ if st.session_state["stepper"] == 7:
         
     st.session_state["model_choice"] = st.selectbox("Algorithm Choice", options)
     
-    if st.session_state["model_choice"] == "SVM":
-        st.session_state["svm_kernel"] = st.selectbox("Kernel Option", ["linear", "rbf", "poly", "sigmoid"])
+    # Kernel selection removed
+    st.session_state["svm_kernel"] = "rbf"
         
     c1, c2 = st.columns(2)
     with c1:
@@ -400,10 +400,18 @@ if st.session_state["stepper"] == 8:
     k = st.number_input("Value of K for Cross-Validation", 2, 10, 5)
     
     if st.button("⚡ Execute Training Cycle"):
-        with st.spinner("Training model with diagnostic checks..."):
+        with st.spinner("Training model with high-fidelity diagnostics..."):
             df_final = st.session_state.get("df_clean", df)
-            X = df_final[st.session_state["selected_features"]].fillna(0)
-            y = df_final[st.session_state["target"]]
+            target = st.session_state["target"]
+            
+            # 🛡️ ANTI-LEAKAGE CHECK: Ensure target is NOT in features
+            features = [f for f in st.session_state["selected_features"] if f != target]
+            if len(features) < len(st.session_state["selected_features"]):
+                st.warning("⚠️ Target column was detected in features. It has been filtered out to prevent 100% accuracy leakage.")
+            
+            X = df_final[features].fillna(0)
+            y = df_final[target]
+            
             if st.session_state["problem_type"] == "Classification":
                 le = LabelEncoder()
                 y = le.fit_transform(y)
@@ -422,7 +430,7 @@ if st.session_state["stepper"] == 8:
             elif m_type == "Random Forest": 
                 model = RandomForestClassifier() if st.session_state["problem_type"] == "Classification" else RandomForestRegressor()
             elif m_type == "SVM":
-                model = SVC(kernel=st.session_state["svm_kernel"]) if st.session_state["problem_type"] == "Classification" else SVR(kernel=st.session_state["svm_kernel"])
+                model = SVC(kernel="rbf", probability=True) if st.session_state["problem_type"] == "Classification" else SVR(kernel="rbf")
             elif m_type == "K-Means": model = KMeans(n_clusters=len(np.unique(y)))
             elif m_type == "KNN": model = KNeighborsRegressor()
 
@@ -431,17 +439,47 @@ if st.session_state["stepper"] == 8:
             y_pred_train = model.predict(X_train_s)
             y_pred_test = model.predict(X_test_s)
             
-            st.markdown('<div class="step-header">Diagnostic Output</div>', unsafe_allow_html=True)
+            st.markdown('<div class="step-header">📊 Intelligent Performance Analysis</div>', unsafe_allow_html=True)
+            
+            c1, c2 = st.columns(2)
             if st.session_state["problem_type"] == "Classification":
-                tr_s, ts_s = accuracy_score(y_train, y_pred_train), accuracy_score(y_test, y_pred_test)
-                st.metric("Train Accuracy", f"{tr_s:.2%}"); st.metric("Test Accuracy", f"{ts_s:.2%}")
+                ts_s = accuracy_score(y_test, y_pred_test)
+                f1 = f1_score(y_test, y_pred_test, average='weighted')
+                tr_s = accuracy_score(y_train, y_pred_train)
+                
+                with c1:
+                    st.metric("Model Fidelity (Accuracy)", f"{ts_s:.2%}")
+                    info_box(f"Accuracy measures the correct predictions. Your model got **{ts_s:.2%}** of unseen cases right.")
+                with c2:
+                    st.metric("F1-Score (Balance)", f"{f1:.4f}")
+                    info_box("F1-Score marks the balance between precision and recall. Higher is better.")
+                
+                # Confusion Matrix
+                cm = confusion_matrix(y_test, y_pred_test)
+                fig_cm = px.imshow(cm, text_auto=True, title="Confusion Matrix: Actual vs Predicted", color_continuous_scale="RdPu")
+                st.plotly_chart(fig_cm, use_container_width=True)
             else:
-                tr_s, ts_s = r2_score(y_train, y_pred_train), r2_score(y_test, y_pred_test)
-                st.metric("Train R²", f"{tr_s:.4f}"); st.metric("Test R²", f"{ts_s:.4f}")
+                ts_s = r2_score(y_test, y_pred_test)
+                mae = mean_absolute_error(y_test, y_pred_test)
+                tr_s = r2_score(y_train, y_pred_train)
+                
+                with c1:
+                    st.metric("R² Score (Explains Variance)", f"{ts_s:.4f}")
+                    info_box(f"R² tells us how much of the data pattern the model captures. **{ts_s:.2f}** is the score.")
+                with c2:
+                    st.metric("Mean Absolute Error", f"{mae:.4f}")
+                    info_box("MAE is the average 'miss' distance. Lower is better.")
 
-            if tr_s > ts_s + 0.12: st.warning("⚠️ Overfitting detected.")
-            elif tr_s < 0.5: st.warning("⚠️ Underfitting detected.")
-            else: st.success("✅ Model generalized successfully.")
+            # Generalization Diagnostic
+            st.markdown('<div class="step-header">⚖️ Generalization Diagnostic</div>', unsafe_allow_html=True)
+            if tr_s > ts_s + 0.15:
+                st.warning(f"🚨 **Overfitting Risk.** (Train: {tr_s:.2f} vs Test: {ts_s:.2f})")
+            elif tr_s < 0.3:
+                st.error("🚨 **Underfitting Error.** The model is too simple.")
+            elif ts_s > 0.99 and st.session_state["problem_type"] == "Classification":
+                st.info("💡 **Perfect Score Warning:** This often indicates Data Leakage (target was in features).")
+            else:
+                st.success("✅ **Balanced Learning.** The model generalized well.")
             
             st.session_state["trained_model"] = model
             st.session_state["X_train_optimized"] = X_train_s
