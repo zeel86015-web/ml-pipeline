@@ -124,11 +124,11 @@ def main():
         st.header("Select Your Objective")
         col1, col2 = st.columns(2)
         with col1:
-            if st.button("Classification", use_container_width=True):
+            if st.button("Classification", width='stretch'):
                 st.session_state.problem_type = "Classification"
                 st.success("Target set to Classification")
         with col2:
-            if st.button("Regression", use_container_width=True):
+            if st.button("Regression", width='stretch'):
                 st.session_state.problem_type = "Regression"
                 st.success("Target set to Regression")
 
@@ -141,7 +141,7 @@ def main():
         # Sample Data Option
         col_s1, col_s2 = st.columns([1, 4])
         with col_s1:
-            if st.button("Load Sample Data (Titanic)", use_container_width=True):
+            if st.button("Load Sample Data (Titanic)", width='stretch'):
                 # Using a generic URL for titanic or iris
                 url = "https://raw.githubusercontent.com/datasciencedojo/datasets/master/titanic.csv"
                 st.session_state.data = pd.read_csv(url)
@@ -174,7 +174,7 @@ def main():
                     st.error(f"Error processing upload: {e}")
 
             df = st.session_state.data
-            st.dataframe(df.head(), use_container_width=True)
+            st.dataframe(df.head(), width='stretch')
 
             col1, col2 = st.columns(2)
             with col1:
@@ -204,7 +204,7 @@ def main():
                         else:
                              fig = px.scatter(pca_df, x='PC1', y='PC2', title="2D PCA Visualization", template="plotly_dark")
 
-                        st.plotly_chart(fig, use_container_width=True)
+                        st.plotly_chart(fig, width='stretch')
 
                     st.write(f"Overall Data Shape: {df.shape}")
                     st.write(f"Selected Features Sub-shape: {df[st.session_state.features].shape}")
@@ -229,7 +229,7 @@ def main():
                 if len(numeric_cols) > 1:
                     corr = df[numeric_cols].corr()
                     fig = px.imshow(corr, text_auto=True, color_continuous_scale='RdBu_r', title="Feature Correlation Matrix", template="plotly_dark")
-                    st.plotly_chart(fig, use_container_width=True)
+                    st.plotly_chart(fig, width='stretch')
                 else:
                     st.write("Not enough numeric columns for correlation.")
 
@@ -237,7 +237,7 @@ def main():
                 feature_to_plot = st.selectbox("Choose feature to visualize distribution", df.columns)
                 fig = px.histogram(df, x=feature_to_plot, color=st.session_state.target if df[st.session_state.target].nunique() < 10 else None, 
                                    marginal="box", title=f"Distribution of {feature_to_plot}", template="plotly_dark")
-                st.plotly_chart(fig, use_container_width=True)
+                st.plotly_chart(fig, width='stretch')
 
             with tab_stats:
                 st.table(df.describe().T)
@@ -258,15 +258,15 @@ def main():
                     if df[col].isnull().any():
                         if df[col].dtype in [np.float64, np.int64]:
                             if strategy == "Mean":
-                                df[col].fillna(df[col].mean(), inplace=True)
+                                df[col] = df[col].fillna(df[col].mean())
                             elif strategy == "Median":
-                                df[col].fillna(df[col].median(), inplace=True)
+                                df[col] = df[col].fillna(df[col].median())
                             elif strategy == "Mode":
-                                df[col].fillna(df[col].mode()[0], inplace=True)
+                                df[col] = df[col].fillna(df[col].mode()[0])
                             else:
-                                df[col].fillna(0, inplace=True)
+                                df[col] = df[col].fillna(0)
                         else:
-                            df[col].fillna(df[col].mode()[0], inplace=True)
+                            df[col] = df[col].fillna(df[col].mode()[0])
                 st.session_state.data = df
                 st.success("Missing values imputed.")
 
@@ -376,7 +376,7 @@ def main():
                         st.write(f"Selected Features: {selected_mi}")
 
                         fig = px.bar(mi_series.head(k_best), title="Top Features by Information Gain", template="plotly_dark")
-                        st.plotly_chart(fig, use_container_width=True)
+                        st.plotly_chart(fig, width='stretch')
             else:
                 st.warning("No numeric features available for Mutual Information calculation.")
 
@@ -392,11 +392,15 @@ def main():
 
             if st.button("Perform Split"):
                 df = st.session_state.data
-                X = df[st.session_state.features]
+                
+                # ⚔️ ANTI-LEAKAGE: Explicitly exclude target from features
+                final_features = [f for f in st.session_state.features if f != st.session_state.target]
+                st.session_state.features = final_features
+                
+                X = df[final_features]
                 y = df[st.session_state.target]
 
                 # Preprocessing
-                # Simple handling of categorical in X
                 X_proc = pd.get_dummies(X)
 
                 st.session_state.X_train, st.session_state.X_test, st.session_state.y_train, st.session_state.y_test = train_test_split(
@@ -469,7 +473,7 @@ def main():
                         st.success("Training Complete!")
                         st.subheader("K-Fold Results")
                         cv_df = pd.DataFrame(cv_results)
-                        st.dataframe(cv_df, use_container_width=True)
+                        st.dataframe(cv_df, width='stretch')
 
                         # Store for metrics
                         st.session_state.cv_train_mean = cv_results['train_score'].mean()
@@ -503,6 +507,12 @@ def main():
                     f1 = f1_score(y_test, preds, average='weighted')
                     st.metric("Test Accuracy", f"{acc:.4f}")
                     st.metric("F1 Score (Weighted)", f"{f1:.4f}")
+                    
+                    # Confusion Matrix
+                    cm = confusion_matrix(y_test, preds)
+                    fig_cm = px.imshow(cm, text_auto=True, title="Confusion Matrix: Actual vs Predicted", color_continuous_scale="PuBu", template="plotly_dark")
+                    st.plotly_chart(fig_cm, width='stretch')
+
                     st.text("Classification Report:")
                     st.code(classification_report(y_test, preds))
                 else:
@@ -510,6 +520,12 @@ def main():
                     r2 = r2_score(y_test, preds)
                     st.metric("Test MSE", f"{mse:.4f}")
                     st.metric("Test R2 Score", f"{r2:.4f}")
+
+                    # Residuals Plot
+                    residuals = y_test - preds
+                    fig_res = px.scatter(x=preds, y=residuals, labels={'x': 'Predicted', 'y': 'Residual'}, title="Residuals Plot", template="plotly_dark")
+                    fig_res.add_hline(y=0, line_dash="dash", line_color="white")
+                    st.plotly_chart(fig_res, width='stretch')
 
                 # Underfitting/Overfitting Check
                 st.subheader("Overfitting/Underfitting Diagnosis")
@@ -520,11 +536,13 @@ def main():
 
                 diff = train_score - test_score
                 if diff > 0.15:
-                    st.error("⚠️ The model is likely **OVERFITTING**. (Large gap between train and test)")
+                    st.error(f"⚠️ **OVERFITTING** detected. (Train: {train_score:.2f} vs Test: {test_score:.2f})")
                 elif train_score < 0.6:
-                    st.warning("⚠️ The model is likely **UNDERFITTING**. (Low train performance)")
+                    st.warning("⚠️ **UNDERFITTING** detected. Model is too simple.")
+                elif test_score > 0.999 and st.session_state.problem_type == "Classification":
+                    st.info("💡 **Leakage Warning:** 100% accuracy may mean the target is inside the features.")
                 else:
-                    st.success("✅ The model seems **WELL-BALANCED**.")
+                    st.success("✅ **WELL-BALANCED** model.")
 
             # 2. Hyperparameter Tuning
             st.divider()
