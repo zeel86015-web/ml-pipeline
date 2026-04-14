@@ -327,10 +327,24 @@ if st.session_state["stepper"] == 5:
         vt = VarianceThreshold(threshold=0.1).fit(X)
         scores = pd.Series(vt.variances_, index=X.columns).sort_values()
     elif method == "Correlation Analysis":
-        scores = df_used.corr()[target].abs().drop(target).sort_values()
+        # Correlation only works on numeric data. We must ensure target is numeric too for this calc.
+        temp_df = X.copy()
+        if st.session_state["problem_type"] == "Classification":
+            le = LabelEncoder()
+            temp_df[target] = le.fit_transform(y)
+        else:
+            temp_df[target] = pd.to_numeric(y, errors='coerce').fillna(0)
+        
+        scores = temp_df.corr()[target].abs().drop(target).sort_values()
     else:
         with st.spinner("Calculating Mutual info..."):
-            mi = mutual_info_classif(X, y) if st.session_state["problem_type"] == "Classification" else mutual_info_regression(X, y)
+            if st.session_state["problem_type"] == "Classification":
+                le = LabelEncoder()
+                y_encoded = le.fit_transform(y)
+                mi = mutual_info_classif(X, y_encoded)
+            else:
+                y_numeric = pd.to_numeric(y, errors='coerce').fillna(0)
+                mi = mutual_info_regression(X, y_numeric)
             scores = pd.Series(mi, index=X.columns).sort_values()
 
     fig = px.bar(scores, orientation="h", title=f"Feature Scores ({method})", template="plotly_white", color_discrete_sequence=["#4a7cff"])
@@ -393,6 +407,8 @@ if st.session_state["stepper"] == 8:
             if st.session_state["problem_type"] == "Classification":
                 le = LabelEncoder()
                 y = le.fit_transform(y)
+            else:
+                y = pd.to_numeric(y, errors='coerce').fillna(0)
             
             X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=st.session_state["test_size"], random_state=42)
             scaler = StandardScaler()
