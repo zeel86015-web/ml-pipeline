@@ -10,7 +10,7 @@ from sklearn.linear_model import LinearRegression, LogisticRegression
 from sklearn.svm import SVC, SVR
 from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
 from sklearn.cluster import KMeans
-from sklearn.metrics import mean_squared_error, r2_score, accuracy_score, classification_report, f1_score
+from sklearn.metrics import mean_squared_error, r2_score, accuracy_score, classification_report, f1_score, confusion_matrix
 from sklearn.feature_selection import VarianceThreshold, SelectKBest, mutual_info_classif, mutual_info_regression
 from sklearn.impute import SimpleImputer
 from sklearn.ensemble import IsolationForest
@@ -254,6 +254,7 @@ def main():
             strategy = st.radio("Imputation Strategy", ["Mean", "Median", "Mode", "Constant (0)"], horizontal=True)
 
             if st.button("Apply Imputation"):
+                df = df.copy()
                 for col in df.columns:
                     if df[col].isnull().any():
                         if df[col].dtype in [np.float64, np.int64]:
