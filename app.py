@@ -1,5 +1,5 @@
-PiePline — Interactive ML Pipeline Dashboard
-Uses the Movie dataset to walk through a complete ML workflow.
+# PiePline — Interactive ML Pipeline Dashboard
+# Uses the Movie dataset to walk through a complete ML workflow.
 
 import streamlit as st
 import pandas as pd
