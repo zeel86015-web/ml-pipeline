@@ -1,6 +1,6 @@
 """
 PipeDash — Interactive ML Pipeline Dashboard
-Uses the Wine Quality dataset to walk through a complete ML workflow.
+Uses the Movie dataset to walk through a complete ML workflow.
 """
 
 import streamlit as st
@@ -272,17 +272,19 @@ def main():
         st.markdown('<div class="glass-card">', unsafe_allow_html=True)
         section(
             "② Data Input & PCA Visualisation",
-            "Load the Wine Quality dataset, select your target, and explore data shape in PCA space.",
+            "Load the Movie dataset, select your target, and explore data shape in PCA space.",
         )
 
         @st.cache_data
-        def load_wine():
-            return pd.read_csv("assets/WineQT.csv")
+        def load_data():
+            return pd.read_csv("assets/merged_movie_data.csv")
 
-        df = load_wine().copy()
-        # Drop Id column if present
-        if "Id" in df.columns:
-            df = df.drop(columns=["Id"])
+        df = load_data().copy()
+        # Drop only strictly identifier/URL columns, keep titles for context
+        id_cols = ["id", "movie_id", "homepage"]
+        for c in id_cols:
+            if c in df.columns:
+                df = df.drop(columns=[c])
 
         st.session_state.df = df.copy()
 
@@ -299,18 +301,21 @@ def main():
         target = st.selectbox(
             "Select target column",
             df.columns.tolist(),
-            index=df.columns.tolist().index("quality")
-            if "quality" in df.columns
+            index=df.columns.tolist().index("vote_average")
+            if "vote_average" in df.columns
             else 0,
             key="sel_target",
         )
         st.session_state.target = target
 
-        feature_cols = [c for c in df.columns if c != target]
+        feature_cols = df.select_dtypes(include="number").columns.tolist()
+        if target in feature_cols:
+            feature_cols.remove(target)
+
         selected = st.multiselect(
-            "Select features for PCA (leave blank = all)",
+            "Select features for PCA (numeric only recommended)",
             feature_cols,
-            default=feature_cols,
+            default=feature_cols[:10] if len(feature_cols) > 10 else feature_cols,
             key="sel_features_pca",
         )
         if not selected:
@@ -481,12 +486,15 @@ def main():
             )
             if st.button("Apply Imputation", key="btn_imp"):
                 for c in miss.index:
-                    if imp_method == "mean":
+                    is_num = pd.api.types.is_numeric_dtype(df[c])
+                    if imp_method == "mean" and is_num:
                         df[c] = df[c].fillna(df[c].mean())
-                    elif imp_method == "median":
+                    elif imp_method == "median" and is_num:
                         df[c] = df[c].fillna(df[c].median())
                     else:
-                        df[c] = df[c].fillna(df[c].mode()[0])
+                        # Mode works for both numeric and categorical
+                        if not df[c].mode().empty:
+                            df[c] = df[c].fillna(df[c].mode()[0])
                 st.session_state.df = df.copy()
                 st.success("Imputation applied!")
 
@@ -566,7 +574,9 @@ def main():
             else st.session_state.df.copy()
         )
         target = st.session_state.target
-        feature_cols = [c for c in df.columns if c != target]
+        feature_cols = df.select_dtypes(include="number").columns.tolist()
+        if target in feature_cols:
+            feature_cols.remove(target)
         X = df[feature_cols]
         y = df[target]
 
