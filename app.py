@@ -253,11 +253,11 @@ def main():
         section("① Problem Type", "Choose the type of ML problem you want to solve.")
         col1, col2 = st.columns(2)
         with col1:
-            if st.button("Classification", use_container_width=True, key="btn_cls"):
+            if st.button("Classification", width="stretch", key="btn_cls"):
                 st.session_state.problem_type = "Classification"
                 advance(2)
         with col2:
-            if st.button("Regression", use_container_width=True, key="btn_reg"):
+            if st.button("Regression", width="stretch", key="btn_reg"):
                 st.session_state.problem_type = "Regression"
                 advance(2)
         if st.session_state.problem_type:
@@ -282,11 +282,11 @@ def main():
         df = load_wine().copy()
         # Drop Id column if present
         if "Id" in df.columns:
-            df.drop(columns=["Id"], inplace=True)
+            df = df.drop(columns=["Id"])
 
         st.session_state.df = df.copy()
 
-        st.dataframe(df.head(10), use_container_width=True)
+        st.dataframe(df.head(10), width="stretch")
         metric_cards(
             [
                 (str(df.shape[0]), "Rows"),
@@ -341,7 +341,7 @@ def main():
                     color_discrete_sequence=px.colors.sequential.Plasma_r,
                 )
                 fig2.update_layout(margin=dict(t=40, b=30), height=420)
-                st.plotly_chart(fig2, use_container_width=True)
+                st.plotly_chart(fig2, width="stretch")
             if n_comp >= 3:
                 with tab3d:
                     fig3 = px.scatter_3d(
@@ -355,7 +355,7 @@ def main():
                         color_discrete_sequence=px.colors.sequential.Plasma_r,
                     )
                     fig3.update_layout(margin=dict(t=40, b=10), height=500)
-                    st.plotly_chart(fig3, use_container_width=True)
+                    st.plotly_chart(fig3, width="stretch")
 
             # Explained variance
             exp_var = pca.explained_variance_ratio_
@@ -368,7 +368,7 @@ def main():
                 color_discrete_sequence=[ACCENT],
             )
             fig_var.update_layout(margin=dict(t=40, b=30), height=300)
-            st.plotly_chart(fig_var, use_container_width=True)
+            st.plotly_chart(fig_var, width="stretch")
 
         if st.button("Continue to EDA", key="btn_to_eda"):
             advance(3)
@@ -388,7 +388,7 @@ def main():
         target = st.session_state.target
 
         st.subheader("Descriptive Statistics")
-        st.dataframe(df.describe().T.style.format("{:.2f}"), use_container_width=True)
+        st.dataframe(df.describe().T.style.format("{:.2f}"), width="stretch")
 
         # Distribution histograms
         st.subheader("Feature Distributions")
@@ -413,7 +413,7 @@ def main():
                         height=240,
                         showlegend=False,
                     )
-                    col.plotly_chart(fig, use_container_width=True)
+                    col.plotly_chart(fig, width="stretch")
 
         # Box plots
         st.subheader("Box Plots")
@@ -435,7 +435,7 @@ def main():
                         height=240,
                         showlegend=False,
                     )
-                    col.plotly_chart(fig, use_container_width=True)
+                    col.plotly_chart(fig, width="stretch")
 
         # Correlation heatmap
         st.subheader("Correlation Heatmap")
@@ -448,7 +448,7 @@ def main():
             title="Pearson Correlation Matrix",
         )
         fig_corr.update_layout(margin=dict(t=40, b=20), height=550)
-        st.plotly_chart(fig_corr, use_container_width=True)
+        st.plotly_chart(fig_corr, width="stretch")
 
         if st.button("Continue to Data Cleaning", key="btn_to_clean"):
             advance(4)
@@ -475,18 +475,18 @@ def main():
         if miss.empty:
             st.info("No missing values detected.")
         else:
-            st.dataframe(miss.rename("Missing Count"), use_container_width=True)
+            st.dataframe(miss.rename("Missing Count"), width="stretch")
             imp_method = st.selectbox(
                 "Imputation method", ["mean", "median", "mode"], key="imp_method"
             )
             if st.button("Apply Imputation", key="btn_imp"):
                 for c in miss.index:
                     if imp_method == "mean":
-                        df[c].fillna(df[c].mean(), inplace=True)
+                        df[c] = df[c].fillna(df[c].mean())
                     elif imp_method == "median":
-                        df[c].fillna(df[c].median(), inplace=True)
+                        df[c] = df[c].fillna(df[c].median())
                     else:
-                        df[c].fillna(df[c].mode()[0], inplace=True)
+                        df[c] = df[c].fillna(df[c].mode()[0])
                 st.session_state.df = df.copy()
                 st.success("Imputation applied!")
 
@@ -537,7 +537,7 @@ def main():
 
         if n_outliers > 0:
             with st.expander(f"View {n_outliers} outlier rows"):
-                st.dataframe(df[outlier_mask], use_container_width=True)
+                st.dataframe(df[outlier_mask], width="stretch")
 
             if st.button("Remove Outliers", key="btn_rm_outliers"):
                 df = df[~outlier_mask].reset_index(drop=True)
@@ -602,7 +602,7 @@ def main():
                 annotation_text="Threshold",
             )
             fig_vt.update_layout(margin=dict(t=40, b=30), height=350)
-            st.plotly_chart(fig_vt, use_container_width=True)
+            st.plotly_chart(fig_vt, width="stretch")
             st.caption(
                 f"Features above threshold: **{len(kept)}** / {len(feature_cols)}"
             )
@@ -622,7 +622,7 @@ def main():
                 color_continuous_scale="Viridis",
             )
             fig_ct.update_layout(margin=dict(t=40, b=30), height=350)
-            st.plotly_chart(fig_ct, use_container_width=True)
+            st.plotly_chart(fig_ct, width="stretch")
 
         # Information Gain
         with tab_ig:
@@ -645,7 +645,7 @@ def main():
                 color_continuous_scale="Magma",
             )
             fig_mi.update_layout(margin=dict(t=40, b=30), height=350)
-            st.plotly_chart(fig_mi, use_container_width=True)
+            st.plotly_chart(fig_mi, width="stretch")
 
         # Let user pick final features
         st.subheader("Select Final Features")
@@ -713,7 +713,7 @@ def main():
             hole=0.45,
         )
         fig_pie.update_layout(margin=dict(t=40, b=20), height=320)
-        st.plotly_chart(fig_pie, use_container_width=True)
+        st.plotly_chart(fig_pie, width="stretch")
 
         if st.button("Continue to Model Selection", key="btn_to_model"):
             advance(7)
@@ -873,7 +873,7 @@ def main():
             st.session_state.trained_models = trained_models_dict
 
             res_df = pd.DataFrame(results)
-            st.dataframe(res_df, use_container_width=True, hide_index=True)
+            st.dataframe(res_df, width="stretch", hide_index=True)
 
             # Bar chart of scores
             plot_df = res_df[res_df["Train Score"] != "N/A"].copy()
@@ -915,7 +915,7 @@ def main():
                     margin=dict(t=40, b=30),
                     height=380,
                 )
-                st.plotly_chart(fig_scores, use_container_width=True)
+                st.plotly_chart(fig_scores, width="stretch")
 
             # K-Fold per-fold detail for each model
             with st.expander("Per-Fold K-Fold Scores"):
@@ -945,7 +945,7 @@ def main():
                         annotation_text=f"Mean: {fold_scores.mean():.4f}",
                     )
                     fig_fold.update_layout(margin=dict(t=40, b=20), height=300)
-                    st.plotly_chart(fig_fold, use_container_width=True)
+                    st.plotly_chart(fig_fold, width="stretch")
 
         if st.session_state.trained_models:
             if st.button("Continue to Hyperparameter Tuning", key="btn_to_tune"):
@@ -1096,7 +1096,7 @@ def main():
                     margin=dict(t=40, b=30),
                     height=350,
                 )
-                st.plotly_chart(fig_ba, use_container_width=True)
+                st.plotly_chart(fig_ba, width="stretch")
 
                 # CV results table
                 cv_res = pd.DataFrame(searcher.cv_results_)
@@ -1109,7 +1109,7 @@ def main():
                 cols_show = [c for c in cols_show if c in cv_res.columns]
                 st.dataframe(
                     cv_res[cols_show].sort_values("rank_test_score").head(10),
-                    use_container_width=True,
+                    width="stretch",
                     hide_index=True,
                 )
 
