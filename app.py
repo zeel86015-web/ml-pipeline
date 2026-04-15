@@ -1,348 +1,1154 @@
+"""
+PipeDash — Interactive ML Pipeline Dashboard
+Uses the Wine Quality dataset to walk through a complete ML workflow.
+"""
+
 import streamlit as st
 import pandas as pd
 import numpy as np
 import plotly.express as px
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 import seaborn as sns
 import matplotlib.pyplot as plt
+from io import BytesIO
 
 from sklearn.decomposition import PCA
 from sklearn.preprocessing import StandardScaler, LabelEncoder
-from sklearn.ensemble import IsolationForest, RandomForestClassifier, RandomForestRegressor
-from sklearn.cluster import DBSCAN, OPTICS, KMeans
-from sklearn.feature_selection import VarianceThreshold, SelectKBest, mutual_info_classif, mutual_info_regression
-from sklearn.model_selection import train_test_split, KFold, cross_val_score, GridSearchCV, RandomizedSearchCV
+from sklearn.model_selection import (
+    train_test_split,
+    cross_val_score,
+    GridSearchCV,
+    RandomizedSearchCV,
+    KFold,
+)
+from sklearn.feature_selection import (
+    VarianceThreshold,
+    mutual_info_classif,
+    mutual_info_regression,
+)
 from sklearn.linear_model import LinearRegression, LogisticRegression
 from sklearn.svm import SVC, SVR
-from sklearn.metrics import accuracy_score, mean_squared_error, r2_score
+from sklearn.cluster import KMeans, DBSCAN, OPTICS
+from sklearn.ensemble import (
+    RandomForestClassifier,
+    RandomForestRegressor,
+    IsolationForest,
+)
+from sklearn.metrics import (
+    accuracy_score,
+    f1_score,
+    mean_squared_error,
+    r2_score,
+    classification_report,
+    confusion_matrix,
+    mean_absolute_error,
+)
+import warnings
 
-# --- Page Configuration ---
-st.set_page_config(page_title="Professional ML Pipeline Dashboard", layout="wide")
-st.title("🚀 Professional ML Pipeline Dashboard")
+warnings.filterwarnings("ignore")
 
-# Initialize session state variables
-if 'df' not in st.session_state:
-    st.session_state.df = None
-if 'task_type' not in st.session_state:
-    st.session_state.task_type = 'Classification'
+# ─────────────────────────────────────────────
+# Page config
+# ─────────────────────────────────────────────
+st.set_page_config(
+    page_title="PipeDash - ML Pipeline",
+    layout="wide",
+    initial_sidebar_state="collapsed",
+)
 
-# --- Horizontal Expansion using Tabs ---
-tabs = st.tabs([
-    "1. Data Input", 
-    "2. EDA", 
-    "3. Cleaning", 
-    "4. Feature Selection", 
-    "5. Split & Model", 
-    "6. Train & Tune"
-])
+# ─────────────────────────────────────────────
+# Custom CSS
+# ─────────────────────────────────────────────
+st.markdown(
+    """
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
 
-# ==========================================
-# TAB 1: Setup, Data Input & PCA
-# ==========================================
-with tabs[0]:
-    st.header("1. Problem Definition & Data Upload")
-    
-    col1, col2 = st.columns([1, 2])
-    with col1:
-        st.session_state.task_type = st.selectbox("Select Problem Type:", ["Classification", "Regression"])
-        uploaded_file = st.file_uploader("Upload your CSV Data", type=["csv"])
-        
-    if uploaded_file is not None:
-        if st.session_state.df is None or st.button("Reload Original Data"):
-            st.session_state.df = pd.read_csv(uploaded_file)
-        
-        df = st.session_state.df
-        st.success(f"Dataset loaded successfully! Shape: {df.shape}")
-        
-        with col2:
-            target_col = st.selectbox("Select Target Feature:", df.columns.tolist(), index=len(df.columns)-1)
-            st.session_state.target_col = target_col
-        
-        st.markdown("---")
-        st.subheader("Data Shape & PCA Visualization")
-        
-        # PCA requires numeric data
-        numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
-        if target_col in numeric_cols:
-            numeric_cols.remove(target_col)
-            
-        selected_features = st.multiselect("Select features for PCA:", numeric_cols, default=numeric_cols[:min(4, len(numeric_cols))])
-        
-        if len(selected_features) >= 2:
-            try:
-                pca = PCA(n_components=2)
-                scaled_data = StandardScaler().fit_transform(df[selected_features].dropna())
-                pca_result = pca.fit_transform(scaled_data)
-                
-                pca_df = pd.DataFrame(data=pca_result, columns=['PC1', 'PC2'])
-                pca_df['Target'] = df[target_col].dropna().values[:len(pca_df)]
-                
-                fig = px.scatter(pca_df, x='PC1', y='PC2', color='Target', title="2D PCA Projection of Selected Features")
-                st.plotly_chart(fig, use_container_width=True)
-            except Exception as e:
-                st.warning(f"Could not perform PCA. Ensure selected columns contain valid numeric data. Error: {e}")
+html, body, [class*="css"] {
+    font-family: 'Inter', sans-serif;
+}
+.block-container { padding-top: 1.5rem; }
 
-# ==========================================
-# TAB 2: Exploratory Data Analysis (EDA)
-# ==========================================
-with tabs[1]:
-    st.header("2. Exploratory Data Analysis (EDA)")
-    if st.session_state.df is not None:
-        df = st.session_state.df
-        
-        st.subheader("Raw Data Preview")
-        st.dataframe(df.head(10))
-        
+/* ---------- step-bar ---------- */
+.step-bar {
+    display: flex; justify-content: center; gap: 0;
+    margin-bottom: 2rem; padding: 0 1rem;
+    flex-wrap: wrap;
+}
+.step-item { display: flex; align-items: center; gap: 0; }
+.step-circle {
+    width: 40px; height: 40px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 700; font-size: .85rem; flex-shrink: 0;
+}
+.step-circle.done   { background: #111; color: #fff; }
+.step-circle.active  { background: #555; color: #fff; }
+.step-circle.todo   { background: #E5E5E5; color: #999; }
+.step-line { width: 38px; height: 3px; border-radius: 2px; }
+.step-line.done { background: #111; }
+.step-line.todo { background: #E5E5E5; }
+.step-label {
+    font-size: .6rem; text-align: center; color: #888;
+    max-width: 60px; margin-top: 4px; line-height: 1.15;
+}
+.step-wrapper { display: flex; flex-direction: column; align-items: center; }
+
+/* ---------- cards ---------- */
+.glass-card {
+    background: #fff;
+    border: 1px solid #E5E5E5;
+    border-radius: 12px;
+    padding: 2rem;
+    margin-bottom: 1.5rem;
+}
+
+/* ---------- section title ---------- */
+.section-title {
+    font-size: 1.35rem; font-weight: 700;
+    color: #111;
+    margin-bottom: .6rem;
+}
+.section-sub {
+    font-size: .85rem; color: #888; margin-bottom: 1rem;
+}
+
+/* ---------- metric cards ---------- */
+.metric-row { display: flex; gap: 1rem; flex-wrap: wrap; margin: 1rem 0; }
+.metric-card {
+    flex: 1; min-width: 140px;
+    background: #FAFAFA;
+    border: 1px solid #E5E5E5;
+    border-radius: 10px;
+    padding: 1rem 1.2rem;
+    text-align: center;
+}
+.metric-value { font-size: 1.6rem; font-weight: 800; color: #111; }
+.metric-label { font-size: .75rem; color: #888; margin-top: .2rem; }
+
+/* ---------- hero ---------- */
+.hero { text-align: center; margin-bottom: .5rem; }
+.hero h1 { font-size: 2.6rem; font-weight: 800; color: #111; }
+.hero p { color: #888; font-size: 1rem; margin-top: -0.5rem; }
+
+/* ---------- buttons ---------- */
+div.stButton > button {
+    background: #111; color: #fff;
+    border: none; border-radius: 8px;
+    padding: .55rem 2rem; font-weight: 600;
+}
+div.stButton > button:hover {
+    background: #333;
+}
+</style>
+""",
+    unsafe_allow_html=True,
+)
+
+# ─────────────────────────────────────────────
+# Constants & helpers
+# ─────────────────────────────────────────────
+STEP_NAMES = [
+    "Problem",
+    "Data",
+    "EDA",
+    "Clean",
+    "Features",
+    "Split",
+    "Model",
+    "Train",
+    "Tune",
+]
+TOTAL_STEPS = len(STEP_NAMES)
+
+PLOTLY_TEMPLATE = "plotly_white"
+ACCENT = "#7C3AED"
+ACCENT2 = "#F59E0B"
+
+
+def init_state():
+    """Initialise session-state keys."""
+    defaults = dict(
+        current_step=1,
+        problem_type=None,
+        df=None,
+        df_clean=None,
+        target=None,
+        selected_features=None,
+        X_train=None,
+        X_test=None,
+        y_train=None,
+        y_test=None,
+        trained_models={},
+        split_ratio=0.8,
+        k_folds=5,
+        model_choices=[],
+        final_features=None,
+    )
+    for k, v in defaults.items():
+        if k not in st.session_state:
+            st.session_state[k] = v
+
+
+def advance(step: int):
+    """Set the current step to at least *step*."""
+    st.session_state.current_step = max(st.session_state.current_step, step)
+
+
+def render_step_bar():
+    """Draw the horizontal step-progress indicator."""
+    cur = st.session_state.current_step
+    items_html = ""
+    for i, name in enumerate(STEP_NAMES, 1):
+        cls = "done" if i < cur else ("active" if i == cur else "todo")
+        items_html += f"""
+        <div class="step-item">
+            <div class="step-wrapper">
+                <div class="step-circle {cls}">{i}</div>
+                <div class="step-label">{name}</div>
+            </div>
+        """
+        if i < TOTAL_STEPS:
+            lcls = "done" if i < cur else "todo"
+            items_html += f'<div class="step-line {lcls}"></div>'
+        items_html += "</div>"
+    st.markdown(f'<div class="step-bar">{items_html}</div>', unsafe_allow_html=True)
+
+
+def section(title: str, subtitle: str = ""):
+    st.markdown(f'<div class="section-title">{title}</div>', unsafe_allow_html=True)
+    if subtitle:
+        st.markdown(
+            f'<div class="section-sub">{subtitle}</div>', unsafe_allow_html=True
+        )
+
+
+def metric_cards(pairs: list[tuple[str, str]]):
+    """Render a row of metric cards. pairs = [(value, label), ...]"""
+    cards = "".join(
+        f'<div class="metric-card"><div class="metric-value">{v}</div>'
+        f'<div class="metric-label">{l}</div></div>'
+        for v, l in pairs
+    )
+    st.markdown(f'<div class="metric-row">{cards}</div>', unsafe_allow_html=True)
+
+
+# ─────────────────────────────────────────────
+# Main
+# ─────────────────────────────────────────────
+def main():
+    init_state()
+
+    # Hero
+    st.markdown(
+        '<div class="hero"><h1>PipeDash</h1>'
+        "<p>Interactive Machine-Learning Pipeline Dashboard</p></div>",
+        unsafe_allow_html=True,
+    )
+    render_step_bar()
+
+    # ── STEP 1 ─ Problem Type ──────────────────
+    with st.container():
+        st.markdown('<div class="glass-card">', unsafe_allow_html=True)
+        section("① Problem Type", "Choose the type of ML problem you want to solve.")
         col1, col2 = st.columns(2)
         with col1:
-            st.subheader("Statistical Summary")
-            st.dataframe(df.describe())
+            if st.button("Classification", use_container_width=True, key="btn_cls"):
+                st.session_state.problem_type = "Classification"
+                advance(2)
         with col2:
-            st.subheader("Missing Values")
-            missing_data = df.isna().sum()
-            st.bar_chart(missing_data[missing_data > 0])
-            if missing_data.sum() == 0:
-                st.success("No missing values found!")
+            if st.button("Regression", use_container_width=True, key="btn_reg"):
+                st.session_state.problem_type = "Regression"
+                advance(2)
+        if st.session_state.problem_type:
+            st.success(f"Selected: **{st.session_state.problem_type}**")
+        st.markdown("</div>", unsafe_allow_html=True)
 
-# ==========================================
-# TAB 3: Data Engineering & Cleaning
-# ==========================================
-with tabs[2]:
-    st.header("3. Data Engineering & Cleaning")
-    if st.session_state.df is not None:
+    if st.session_state.current_step < 2:
+        return
+
+    # ── STEP 2 ─ Data Input ────────────────────
+    with st.container():
+        st.markdown('<div class="glass-card">', unsafe_allow_html=True)
+        section(
+            "② Data Input & PCA Visualisation",
+            "Load the Wine Quality dataset, select your target, and explore data shape in PCA space.",
+        )
+
+        @st.cache_data
+        def load_wine():
+            return pd.read_csv("assets/WineQT.csv")
+
+        df = load_wine().copy()
+        # Drop Id column if present
+        if "Id" in df.columns:
+            df.drop(columns=["Id"], inplace=True)
+
+        st.session_state.df = df.copy()
+
+        st.dataframe(df.head(10), use_container_width=True)
+        metric_cards(
+            [
+                (str(df.shape[0]), "Rows"),
+                (str(df.shape[1]), "Columns"),
+                (str(df.select_dtypes(include="number").shape[1]), "Numeric"),
+                (str(df.isnull().sum().sum()), "Missing"),
+            ]
+        )
+
+        target = st.selectbox(
+            "Select target column",
+            df.columns.tolist(),
+            index=df.columns.tolist().index("quality")
+            if "quality" in df.columns
+            else 0,
+            key="sel_target",
+        )
+        st.session_state.target = target
+
+        feature_cols = [c for c in df.columns if c != target]
+        selected = st.multiselect(
+            "Select features for PCA (leave blank = all)",
+            feature_cols,
+            default=feature_cols,
+            key="sel_features_pca",
+        )
+        if not selected:
+            selected = feature_cols
+
+        # PCA
+        scaler = StandardScaler()
+        X_scaled = scaler.fit_transform(df[selected].fillna(0))
+        n_comp = min(3, len(selected))
+
+        if n_comp >= 2:
+            pca = PCA(n_components=n_comp)
+            pcs = pca.fit_transform(X_scaled)
+            pca_df = pd.DataFrame(pcs, columns=[f"PC{i + 1}" for i in range(n_comp)])
+            pca_df["target"] = df[target].astype(str)
+
+            tab2d, tab3d = st.tabs(
+                ["2-D PCA", "3-D PCA"] if n_comp >= 3 else ["2-D PCA", "—"]
+            )
+            with tab2d:
+                fig2 = px.scatter(
+                    pca_df,
+                    x="PC1",
+                    y="PC2",
+                    color="target",
+                    template=PLOTLY_TEMPLATE,
+                    title="PCA — 2-D Projection",
+                    color_discrete_sequence=px.colors.sequential.Plasma_r,
+                )
+                fig2.update_layout(margin=dict(t=40, b=30), height=420)
+                st.plotly_chart(fig2, use_container_width=True)
+            if n_comp >= 3:
+                with tab3d:
+                    fig3 = px.scatter_3d(
+                        pca_df,
+                        x="PC1",
+                        y="PC2",
+                        z="PC3",
+                        color="target",
+                        template=PLOTLY_TEMPLATE,
+                        title="PCA — 3-D Projection",
+                        color_discrete_sequence=px.colors.sequential.Plasma_r,
+                    )
+                    fig3.update_layout(margin=dict(t=40, b=10), height=500)
+                    st.plotly_chart(fig3, use_container_width=True)
+
+            # Explained variance
+            exp_var = pca.explained_variance_ratio_
+            fig_var = px.bar(
+                x=[f"PC{i + 1}" for i in range(n_comp)],
+                y=exp_var,
+                labels={"x": "Component", "y": "Explained Variance Ratio"},
+                template=PLOTLY_TEMPLATE,
+                title="Explained Variance by Component",
+                color_discrete_sequence=[ACCENT],
+            )
+            fig_var.update_layout(margin=dict(t=40, b=30), height=300)
+            st.plotly_chart(fig_var, use_container_width=True)
+
+        if st.button("Continue to EDA", key="btn_to_eda"):
+            advance(3)
+        st.markdown("</div>", unsafe_allow_html=True)
+
+    if st.session_state.current_step < 3:
+        return
+
+    # ── STEP 3 ─ EDA ───────────────────────────
+    with st.container():
+        st.markdown('<div class="glass-card">', unsafe_allow_html=True)
+        section(
+            "③ Exploratory Data Analysis",
+            "Descriptive statistics, distributions, and correlations.",
+        )
         df = st.session_state.df.copy()
-        numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
-        
-        col1, col2 = st.columns(2)
-        
-        # --- Imputation ---
-        with col1:
-            st.subheader("Missing Value Imputation")
-            impute_method = st.selectbox("Select Imputation Method:", ["None", "Mean", "Median", "Mode"])
-            if st.button("Apply Imputation"):
-                if impute_method == "Mean":
-                    df[numeric_cols] = df[numeric_cols].fillna(df[numeric_cols].mean())
-                elif impute_method == "Median":
-                    df[numeric_cols] = df[numeric_cols].fillna(df[numeric_cols].median())
-                elif impute_method == "Mode":
-                    df[numeric_cols] = df[numeric_cols].fillna(df[numeric_cols].mode().iloc[0])
-                st.session_state.df = df
-                st.success(f"{impute_method} imputation applied!")
+        target = st.session_state.target
 
-        # --- Outlier Detection ---
-        with col2:
-            st.subheader("Outlier Detection")
-            outlier_method = st.selectbox("Method:", ["None", "IQR", "Isolation Forest", "DBSCAN", "OPTICS"])
-            
-            if outlier_method != "None":
-                clean_df = df.dropna(subset=numeric_cols)
-                outliers_mask = np.zeros(len(clean_df), dtype=bool)
-                
-                if outlier_method == "IQR":
-                    Q1 = clean_df[numeric_cols].quantile(0.25)
-                    Q3 = clean_df[numeric_cols].quantile(0.75)
-                    IQR = Q3 - Q1
-                    outliers_mask = ((clean_df[numeric_cols] < (Q1 - 1.5 * IQR)) | (clean_df[numeric_cols] > (Q3 + 1.5 * IQR))).any(axis=1).values
-                    
-                elif outlier_method == "Isolation Forest":
-                    iso = IsolationForest(contamination=0.05, random_state=42)
-                    preds = iso.fit_predict(clean_df[numeric_cols])
-                    outliers_mask = preds == -1
-                    
-                elif outlier_method in ["DBSCAN", "OPTICS"]:
-                    scaled_data = StandardScaler().fit_transform(clean_df[numeric_cols])
-                    algo = DBSCAN() if outlier_method == "DBSCAN" else OPTICS()
-                    preds = algo.fit_predict(scaled_data)
-                    outliers_mask = preds == -1
-                    
-                num_outliers = outliers_mask.sum()
-                st.warning(f"Detected **{num_outliers}** outliers using {outlier_method}.")
-                
-                if num_outliers > 0 and st.button("Delete Outliers"):
-                    # Keep only non-outliers
-                    df_filtered = clean_df[~outliers_mask].reset_index(drop=True)
-                    st.session_state.df = df_filtered
-                    st.success("Outliers removed successfully!")
+        st.subheader("Descriptive Statistics")
+        st.dataframe(df.describe().T.style.format("{:.2f}"), use_container_width=True)
 
-# ==========================================
-# TAB 4: Feature Selection
-# ==========================================
-with tabs[3]:
-    st.header("4. Feature Selection")
-    if st.session_state.df is not None:
-        df = st.session_state.df
-        target_col = st.session_state.target_col
-        
-        # Prepare Data
-        X = df.select_dtypes(include=[np.number]).drop(columns=[target_col], errors='ignore').dropna()
-        y = df.loc[X.index, target_col]
-        
-        st.markdown("Evaluate features against the target variable.")
-        
-        col1, col2 = st.columns(2)
-        with col1:
-            st.subheader("Variance Threshold")
-            var_thresh = st.slider("Variance Threshold:", 0.0, 1.0, 0.05)
-            try:
-                selector = VarianceThreshold(threshold=var_thresh)
-                selector.fit(X)
-                kept_features = X.columns[selector.get_support()].tolist()
-                st.write(f"**Features kept ({len(kept_features)}):** {kept_features}")
-            except Exception as e:
-                st.write("Could not apply variance threshold.")
+        # Distribution histograms
+        st.subheader("Feature Distributions")
+        num_cols = df.select_dtypes(include="number").columns.tolist()
+        cols_per_row = 3
+        for i in range(0, len(num_cols), cols_per_row):
+            cols = st.columns(cols_per_row)
+            for j, col in enumerate(cols):
+                idx = i + j
+                if idx < len(num_cols):
+                    c = num_cols[idx]
+                    fig = px.histogram(
+                        df,
+                        x=c,
+                        nbins=30,
+                        template=PLOTLY_TEMPLATE,
+                        color_discrete_sequence=[ACCENT],
+                        title=c,
+                    )
+                    fig.update_layout(
+                        margin=dict(t=35, b=20, l=20, r=20),
+                        height=240,
+                        showlegend=False,
+                    )
+                    col.plotly_chart(fig, use_container_width=True)
 
-        with col2:
-            st.subheader("Information Gain")
-            k_features = st.slider("Top K Features to select:", 1, len(X.columns), min(5, len(X.columns)))
-            if st.button("Calculate Information Gain"):
-                # Handle categorical target for classification
-                if st.session_state.task_type == "Classification" and y.dtype == 'O':
-                    y_encoded = LabelEncoder().fit_transform(y)
-                    mi = mutual_info_classif(X, y_encoded)
-                elif st.session_state.task_type == "Classification":
-                    mi = mutual_info_classif(X, y)
-                else:
-                    mi = mutual_info_regression(X, y)
-                    
-                mi_series = pd.Series(mi, index=X.columns).sort_values(ascending=False)
-                fig = px.bar(mi_series.head(k_features), orientation='h', title=f"Top {k_features} Features")
-                st.plotly_chart(fig, use_container_width=True)
-                
-                st.session_state.selected_features = mi_series.head(k_features).index.tolist()
-                st.success("Features saved for model training.")
+        # Box plots
+        st.subheader("Box Plots")
+        for i in range(0, len(num_cols), cols_per_row):
+            cols = st.columns(cols_per_row)
+            for j, col in enumerate(cols):
+                idx = i + j
+                if idx < len(num_cols):
+                    c = num_cols[idx]
+                    fig = px.box(
+                        df,
+                        y=c,
+                        template=PLOTLY_TEMPLATE,
+                        color_discrete_sequence=[ACCENT2],
+                        title=c,
+                    )
+                    fig.update_layout(
+                        margin=dict(t=35, b=20, l=20, r=20),
+                        height=240,
+                        showlegend=False,
+                    )
+                    col.plotly_chart(fig, use_container_width=True)
 
-# ==========================================
-# TAB 5: Data Split & Model Selection
-# ==========================================
-with tabs[4]:
-    st.header("5. Data Split & Model Selection")
-    if st.session_state.df is not None:
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            st.subheader("Train/Test Split")
-            test_size = st.slider("Test Size Proportion:", 0.1, 0.5, 0.2, 0.05)
-            st.session_state.test_size = test_size
-            
-        with col2:
-            st.subheader("Model Selection")
-            if st.session_state.task_type == "Classification":
-                models = ["Logistic Regression", "SVM", "Random Forest", "K-Means (Unsupervised)"]
-            else:
-                models = ["Linear Regression", "SVR", "Random Forest", "K-Means (Unsupervised)"]
-                
-            selected_model = st.selectbox("Choose a Model:", models)
-            st.session_state.selected_model = selected_model
-            
-            if "SVM" in selected_model or "SVR" in selected_model:
-                st.session_state.svm_kernel = st.selectbox("SVM Kernel:", ["linear", "poly", "rbf", "sigmoid"])
-            else:
-                st.session_state.svm_kernel = "rbf"
+        # Correlation heatmap
+        st.subheader("Correlation Heatmap")
+        corr = df[num_cols].corr()
+        fig_corr = px.imshow(
+            corr,
+            text_auto=".2f",
+            template=PLOTLY_TEMPLATE,
+            color_continuous_scale="Plasma",
+            title="Pearson Correlation Matrix",
+        )
+        fig_corr.update_layout(margin=dict(t=40, b=20), height=550)
+        st.plotly_chart(fig_corr, use_container_width=True)
 
-# ==========================================
-# TAB 6: Training, Evaluation & Tuning
-# ==========================================
-with tabs[5]:
-    st.header("6. Training, K-Fold Validation & Metrics")
-    if st.session_state.df is not None:
-        df = st.session_state.df
-        target_col = st.session_state.target_col
-        task = st.session_state.task_type
-        
-        # Use selected features if available
-        features = st.session_state.get('selected_features', df.select_dtypes(include=[np.number]).drop(columns=[target_col], errors='ignore').columns.tolist())
-            
-        X = df[features].dropna()
-        y = df.loc[X.index, target_col]
-        
-        # Label encode categorical target for classification
-        if task == "Classification" and y.dtype == 'O':
-             y = LabelEncoder().fit_transform(y)
-        
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            k_folds = st.number_input("Number of K-Folds:", 2, 20, 5)
-        with col2:
-            tune_method = st.selectbox("Hyperparameter Tuning:", ["None", "GridSearch", "RandomSearch"])
-            
-        if st.button("Train Model & Evaluate", type="primary"):
-            X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=st.session_state.test_size, random_state=42)
-            
+        if st.button("Continue to Data Cleaning", key="btn_to_clean"):
+            advance(4)
+        st.markdown("</div>", unsafe_allow_html=True)
+
+    if st.session_state.current_step < 4:
+        return
+
+    # ── STEP 4 ─ Data Engineering & Cleaning ───
+    with st.container():
+        st.markdown('<div class="glass-card">', unsafe_allow_html=True)
+        section(
+            "④ Data Engineering & Cleaning",
+            "Handle missing values and detect / remove outliers.",
+        )
+        df = st.session_state.df.copy()
+        target = st.session_state.target
+        num_cols = df.select_dtypes(include="number").columns.tolist()
+
+        # --- Missing value imputation ---
+        st.subheader("Missing Value Imputation")
+        miss = df.isnull().sum()
+        miss = miss[miss > 0]
+        if miss.empty:
+            st.info("No missing values detected.")
+        else:
+            st.dataframe(miss.rename("Missing Count"), use_container_width=True)
+            imp_method = st.selectbox(
+                "Imputation method", ["mean", "median", "mode"], key="imp_method"
+            )
+            if st.button("Apply Imputation", key="btn_imp"):
+                for c in miss.index:
+                    if imp_method == "mean":
+                        df[c].fillna(df[c].mean(), inplace=True)
+                    elif imp_method == "median":
+                        df[c].fillna(df[c].median(), inplace=True)
+                    else:
+                        df[c].fillna(df[c].mode()[0], inplace=True)
+                st.session_state.df = df.copy()
+                st.success("Imputation applied!")
+
+        # --- Outlier detection ---
+        st.subheader("Outlier Detection")
+        outlier_method = st.selectbox(
+            "Detection method",
+            ["IQR", "Isolation Forest", "DBSCAN", "OPTICS"],
+            key="outlier_method",
+        )
+
+        feature_for_outlier = [c for c in num_cols if c != target]
+        outlier_mask = pd.Series(False, index=df.index)
+
+        if outlier_method == "IQR":
+            for c in feature_for_outlier:
+                Q1 = df[c].quantile(0.25)
+                Q3 = df[c].quantile(0.75)
+                iqr = Q3 - Q1
+                lower = Q1 - 1.5 * iqr
+                upper = Q3 + 1.5 * iqr
+                outlier_mask |= (df[c] < lower) | (df[c] > upper)
+        elif outlier_method == "Isolation Forest":
+            iso = IsolationForest(contamination=0.05, random_state=42)
+            preds = iso.fit_predict(df[feature_for_outlier].fillna(0))
+            outlier_mask = pd.Series(preds == -1, index=df.index)
+        elif outlier_method == "DBSCAN":
             scaler = StandardScaler()
-            X_train_scaled = scaler.fit_transform(X_train)
-            X_test_scaled = scaler.transform(X_test)
-            
-            sel_model = st.session_state.selected_model
-            model = None
-            param_grid = {}
-            
-            # Setup Model and Parameters
-            if sel_model == "Logistic Regression":
-                model = LogisticRegression()
-                param_grid = {'C': [0.01, 0.1, 1, 10]}
-            elif sel_model == "Linear Regression":
-                model = LinearRegression()
-            elif sel_model == "SVM":
-                model = SVC(kernel=st.session_state.svm_kernel)
-                param_grid = {'C': [0.1, 1, 10], 'gamma': ['scale', 'auto']}
-            elif sel_model == "SVR":
-                model = SVR(kernel=st.session_state.svm_kernel)
-                param_grid = {'C': [0.1, 1, 10]}
-            elif sel_model == "Random Forest":
-                model = RandomForestClassifier() if task == "Classification" else RandomForestRegressor()
-                param_grid = {'n_estimators': [50, 100, 200], 'max_depth': [None, 10, 20]}
-            elif "K-Means" in sel_model:
-                model = KMeans(n_clusters=len(np.unique(y)) if len(np.unique(y)) < 20 else 3)
-            
-            with st.spinner("Training model..."):
-                if "K-Means" in sel_model:
-                    st.info("K-Means is unsupervised. Standard supervised metrics do not apply directly.")
-                    model.fit(X_train_scaled)
-                    st.write("Cluster Centers:", model.cluster_centers_)
+            scaled = scaler.fit_transform(df[feature_for_outlier].fillna(0))
+            db = DBSCAN(eps=2.0, min_samples=5)
+            labels = db.fit_predict(scaled)
+            outlier_mask = pd.Series(labels == -1, index=df.index)
+        elif outlier_method == "OPTICS":
+            scaler = StandardScaler()
+            scaled = scaler.fit_transform(df[feature_for_outlier].fillna(0))
+            opt = OPTICS(min_samples=5)
+            labels = opt.fit_predict(scaled)
+            outlier_mask = pd.Series(labels == -1, index=df.index)
+
+        n_outliers = outlier_mask.sum()
+        metric_cards(
+            [
+                (str(n_outliers), "Outliers Detected"),
+                (f"{n_outliers / len(df) * 100:.1f}%", "of Data"),
+                (str(len(df) - n_outliers), "Clean Rows"),
+            ]
+        )
+
+        if n_outliers > 0:
+            with st.expander(f"View {n_outliers} outlier rows"):
+                st.dataframe(df[outlier_mask], use_container_width=True)
+
+            if st.button("Remove Outliers", key="btn_rm_outliers"):
+                df = df[~outlier_mask].reset_index(drop=True)
+                st.session_state.df = df.copy()
+                st.success(f"Removed {n_outliers} outlier rows. New shape: {df.shape}")
+
+        st.session_state.df_clean = df.copy()
+
+        if st.button("Continue to Feature Selection", key="btn_to_fs"):
+            advance(5)
+        st.markdown("</div>", unsafe_allow_html=True)
+
+    if st.session_state.current_step < 5:
+        return
+
+    # ── STEP 5 ─ Feature Selection ─────────────
+    with st.container():
+        st.markdown('<div class="glass-card">', unsafe_allow_html=True)
+        section(
+            "⑤ Feature Selection",
+            "Rank features by variance, correlation, and information gain.",
+        )
+        df = (
+            st.session_state.df_clean
+            if st.session_state.df_clean is not None
+            else st.session_state.df.copy()
+        )
+        target = st.session_state.target
+        feature_cols = [c for c in df.columns if c != target]
+        X = df[feature_cols]
+        y = df[target]
+
+        tab_vt, tab_cor, tab_ig = st.tabs(
+            ["Variance Threshold", "Correlation", "Information Gain"]
+        )
+
+        # Variance threshold
+        with tab_vt:
+            threshold = st.slider(
+                "Variance threshold", 0.0, 2.0, 0.1, 0.05, key="vt_slider"
+            )
+            selector = VarianceThreshold(threshold=threshold)
+            selector.fit(X.fillna(0))
+            variances = pd.Series(selector.variances_, index=feature_cols).sort_values(
+                ascending=False
+            )
+            kept = variances[variances >= threshold].index.tolist()
+
+            fig_vt = px.bar(
+                x=variances.index,
+                y=variances.values,
+                labels={"x": "Feature", "y": "Variance"},
+                template=PLOTLY_TEMPLATE,
+                title="Feature Variances",
+                color=variances.values,
+                color_continuous_scale="Plasma",
+            )
+            fig_vt.add_hline(
+                y=threshold,
+                line_dash="dash",
+                line_color=ACCENT2,
+                annotation_text="Threshold",
+            )
+            fig_vt.update_layout(margin=dict(t=40, b=30), height=350)
+            st.plotly_chart(fig_vt, use_container_width=True)
+            st.caption(
+                f"Features above threshold: **{len(kept)}** / {len(feature_cols)}"
+            )
+
+        # Correlation with target
+        with tab_cor:
+            corr_with_target = (
+                X.fillna(0).corrwith(y).abs().sort_values(ascending=False)
+            )
+            fig_ct = px.bar(
+                x=corr_with_target.index,
+                y=corr_with_target.values,
+                labels={"x": "Feature", "y": "|Correlation with target|"},
+                template=PLOTLY_TEMPLATE,
+                title="Absolute Correlation with Target",
+                color=corr_with_target.values,
+                color_continuous_scale="Viridis",
+            )
+            fig_ct.update_layout(margin=dict(t=40, b=30), height=350)
+            st.plotly_chart(fig_ct, use_container_width=True)
+
+        # Information Gain
+        with tab_ig:
+            mi_func = (
+                mutual_info_classif
+                if st.session_state.problem_type == "Classification"
+                else mutual_info_regression
+            )
+            mi_scores = mi_func(X.fillna(0), y, random_state=42)
+            mi_series = pd.Series(mi_scores, index=feature_cols).sort_values(
+                ascending=False
+            )
+            fig_mi = px.bar(
+                x=mi_series.index,
+                y=mi_series.values,
+                labels={"x": "Feature", "y": "Mutual Information"},
+                template=PLOTLY_TEMPLATE,
+                title="Information Gain (Mutual Information)",
+                color=mi_series.values,
+                color_continuous_scale="Magma",
+            )
+            fig_mi.update_layout(margin=dict(t=40, b=30), height=350)
+            st.plotly_chart(fig_mi, use_container_width=True)
+
+        # Let user pick final features
+        st.subheader("Select Final Features")
+        final_features = st.multiselect(
+            "Pick features to use for modelling",
+            feature_cols,
+            default=feature_cols,
+            key="final_feat_select",
+        )
+        st.session_state.final_features = final_features
+
+        if st.button("Continue to Data Split", key="btn_to_split"):
+            advance(6)
+        st.markdown("</div>", unsafe_allow_html=True)
+
+    if st.session_state.current_step < 6:
+        return
+
+    # ── STEP 6 ─ Data Split ────────────────────
+    with st.container():
+        st.markdown('<div class="glass-card">', unsafe_allow_html=True)
+        section("⑥ Data Split", "Split into training and testing sets.")
+
+        df = (
+            st.session_state.df_clean
+            if st.session_state.df_clean is not None
+            else st.session_state.df.copy()
+        )
+        target = st.session_state.target
+        features = st.session_state.final_features or [
+            c for c in df.columns if c != target
+        ]
+        X = df[features]
+        y = df[target]
+
+        ratio = st.slider(
+            "Training set ratio", 0.5, 0.95, 0.8, 0.05, key="split_slider"
+        )
+        st.session_state.split_ratio = ratio
+
+        X_train, X_test, y_train, y_test = train_test_split(
+            X, y, train_size=ratio, random_state=42
+        )
+        st.session_state.X_train = X_train
+        st.session_state.X_test = X_test
+        st.session_state.y_train = y_train
+        st.session_state.y_test = y_test
+
+        metric_cards(
+            [
+                (str(X_train.shape[0]), "Train samples"),
+                (str(X_test.shape[0]), "Test samples"),
+                (f"{ratio * 100:.0f}%", "Train ratio"),
+                (str(len(features)), "Features"),
+            ]
+        )
+
+        # Pie chart
+        fig_pie = px.pie(
+            values=[X_train.shape[0], X_test.shape[0]],
+            names=["Train", "Test"],
+            template=PLOTLY_TEMPLATE,
+            color_discrete_sequence=[ACCENT, ACCENT2],
+            title="Train / Test Split",
+            hole=0.45,
+        )
+        fig_pie.update_layout(margin=dict(t=40, b=20), height=320)
+        st.plotly_chart(fig_pie, use_container_width=True)
+
+        if st.button("Continue to Model Selection", key="btn_to_model"):
+            advance(7)
+        st.markdown("</div>", unsafe_allow_html=True)
+
+    if st.session_state.current_step < 7:
+        return
+
+    # ── STEP 7 ─ Model Selection ───────────────
+    with st.container():
+        st.markdown('<div class="glass-card">', unsafe_allow_html=True)
+        section("⑦ Model Selection", "Choose one or more models to train.")
+
+        is_cls = st.session_state.problem_type == "Classification"
+
+        model_options = {
+            "Logistic Regression" if is_cls else "Linear Regression": "lr",
+            "SVM": "svm",
+            "Random Forest": "rf",
+            "K-Means (unsupervised)": "kmeans",
+        }
+
+        picks = st.multiselect(
+            "Select models",
+            list(model_options.keys()),
+            default=[list(model_options.keys())[0]],
+            key="model_picks",
+        )
+        st.session_state.model_choices = [model_options[p] for p in picks]
+
+        svm_kernel = None
+        if "svm" in st.session_state.model_choices:
+            svm_kernel = st.selectbox(
+                "SVM Kernel", ["rbf", "linear", "poly", "sigmoid"], key="svm_kern"
+            )
+            st.session_state["svm_kernel"] = svm_kernel
+
+        if st.button("Continue to Training", key="btn_to_train"):
+            advance(8)
+        st.markdown("</div>", unsafe_allow_html=True)
+
+    if st.session_state.current_step < 8:
+        return
+
+    # ── STEP 8 ─ Training & K-Fold Validation ──
+    with st.container():
+        st.markdown('<div class="glass-card">', unsafe_allow_html=True)
+        section(
+            "⑧ Model Training & K-Fold Validation",
+            "Train models, evaluate with K-Fold cross-validation, and check for overfitting / underfitting.",
+        )
+
+        X_train = st.session_state.X_train
+        X_test = st.session_state.X_test
+        y_train = st.session_state.y_train
+        y_test = st.session_state.y_test
+        is_cls = st.session_state.problem_type == "Classification"
+
+        k = st.slider("Number of K-Folds", 2, 20, 5, key="k_slider")
+        st.session_state.k_folds = k
+
+        if st.button("Train Models", key="btn_train"):
+            models = {}
+            svm_kernel = st.session_state.get("svm_kernel", "rbf")
+
+            for mc in st.session_state.model_choices:
+                if mc == "lr":
+                    models["Linear/Logistic Regression"] = (
+                        LogisticRegression(max_iter=1000, random_state=42)
+                        if is_cls
+                        else LinearRegression()
+                    )
+                elif mc == "svm":
+                    models[f"SVM ({svm_kernel})"] = (
+                        SVC(kernel=svm_kernel, random_state=42)
+                        if is_cls
+                        else SVR(kernel=svm_kernel)
+                    )
+                elif mc == "rf":
+                    models["Random Forest"] = (
+                        RandomForestClassifier(n_estimators=100, random_state=42)
+                        if is_cls
+                        else RandomForestRegressor(n_estimators=100, random_state=42)
+                    )
+                elif mc == "kmeans":
+                    models["K-Means"] = None  # handled separately
+
+            results = []
+            trained_models_dict = {}
+
+            for name, model in models.items():
+                if model is None:
+                    continue
+                model.fit(X_train, y_train)
+                trained_models_dict[name] = model
+
+                train_pred = model.predict(X_train)
+                test_pred = model.predict(X_test)
+
+                scoring = "accuracy" if is_cls else "r2"
+                cv_scores = cross_val_score(
+                    model,
+                    X_train,
+                    y_train,
+                    cv=KFold(n_splits=k, shuffle=True, random_state=42),
+                    scoring=scoring,
+                )
+
+                if is_cls:
+                    train_score = accuracy_score(y_train, train_pred)
+                    test_score = accuracy_score(y_test, test_pred)
+                    f1 = f1_score(y_test, test_pred, average="weighted")
                 else:
-                    kf = KFold(n_splits=k_folds, shuffle=True, random_state=42)
-                    
-                    # Tuning
-                    if tune_method == "GridSearch" and param_grid:
-                        search = GridSearchCV(model, param_grid, cv=kf)
-                        search.fit(X_train_scaled, y_train)
-                        model = search.best_estimator_
-                        st.success(f"Best Parameters via GridSearch: {search.best_params_}")
-                    elif tune_method == "RandomSearch" and param_grid:
-                        search = RandomizedSearchCV(model, param_grid, cv=kf, n_iter=5, random_state=42)
-                        search.fit(X_train_scaled, y_train)
-                        model = search.best_estimator_
-                        st.success(f"Best Parameters via RandomSearch: {search.best_params_}")
-                    else:
-                        # Standard Training with Cross Validation
-                        cv_scores = cross_val_score(model, X_train_scaled, y_train, cv=kf)
-                        st.write(f"**Mean CV Score:** {np.mean(cv_scores):.4f} (Std: {np.std(cv_scores):.4f})")
-                        model.fit(X_train_scaled, y_train)
+                    train_score = r2_score(y_train, train_pred)
+                    test_score = r2_score(y_test, test_pred)
+                    f1 = mean_squared_error(y_test, test_pred)
 
-                    # Performance Metrics & Fitting Check
-                    train_preds = model.predict(X_train_scaled)
-                    test_preds = model.predict(X_test_scaled)
-                    
-                    st.markdown("### Performance Metrics")
-                    m_col1, m_col2 = st.columns(2)
-                    
-                    if task == "Classification":
-                        train_metric = accuracy_score(y_train, train_preds)
-                        test_metric = accuracy_score(y_test, test_preds)
-                        m_col1.metric("Training Accuracy", f"{train_metric:.4f}")
-                        m_col2.metric("Testing Accuracy", f"{test_metric:.4f}")
-                    else:
-                        train_metric = r2_score(y_train, train_preds)
-                        test_metric = r2_score(y_test, test_preds)
-                        m_col1.metric("Training R²", f"{train_metric:.4f}")
-                        m_col2.metric("Testing R²", f"{test_metric:.4f}")
-                        st.write(f"**Testing RMSE:** {np.sqrt(mean_squared_error(y_test, test_preds)):.4f}")
-                    
-                    # Overfitting / Underfitting Check
-                    st.markdown("### Model Fitness Check")
-                    if train_metric - test_metric > 0.15:
-                        st.error("⚠️ **Overfitting Detected:** The model performs significantly better on training data than testing data.")
-                    elif train_metric < 0.60:
-                        st.warning("⚠️ **Underfitting Detected:** The model is performing poorly on the training data.")
-                    else:
-                        st.success("✅ **Good Fit:** The model generalized well to the unseen testing data!")
+                # Overfitting / underfitting
+                gap = train_score - test_score
+                if gap > 0.1:
+                    fit_status = "OVERFITTING"
+                elif test_score < 0.5:
+                    fit_status = "UNDERFITTING"
+                else:
+                    fit_status = "Good Fit"
 
+                results.append(
+                    {
+                        "Model": name,
+                        "Train Score": round(train_score, 4),
+                        "Test Score": round(test_score, 4),
+                        "CV Mean": round(cv_scores.mean(), 4),
+                        "CV Std": round(cv_scores.std(), 4),
+                        "F1 / MSE": round(f1, 4),
+                        "Fit Status": fit_status,
+                    }
+                )
+
+            # K-Means (unsupervised)
+            if "kmeans" in st.session_state.model_choices:
+                n_clusters = len(y_train.unique()) if is_cls else 3
+                km = KMeans(n_clusters=n_clusters, random_state=42, n_init=10)
+                km.fit(X_train)
+                trained_models_dict["K-Means"] = km
+                results.append(
+                    {
+                        "Model": "K-Means",
+                        "Train Score": "N/A",
+                        "Test Score": "N/A",
+                        "CV Mean": "N/A",
+                        "CV Std": "N/A",
+                        "F1 / MSE": f"Inertia: {km.inertia_:.0f}",
+                        "Fit Status": "—",
+                    }
+                )
+
+            st.session_state.trained_models = trained_models_dict
+
+            res_df = pd.DataFrame(results)
+            st.dataframe(res_df, use_container_width=True, hide_index=True)
+
+            # Bar chart of scores
+            plot_df = res_df[res_df["Train Score"] != "N/A"].copy()
+            if not plot_df.empty:
+                plot_df["Train Score"] = plot_df["Train Score"].astype(float)
+                plot_df["Test Score"] = plot_df["Test Score"].astype(float)
+                plot_df["CV Mean"] = plot_df["CV Mean"].astype(float)
+
+                fig_scores = go.Figure()
+                fig_scores.add_trace(
+                    go.Bar(
+                        name="Train",
+                        x=plot_df["Model"],
+                        y=plot_df["Train Score"],
+                        marker_color=ACCENT,
+                    )
+                )
+                fig_scores.add_trace(
+                    go.Bar(
+                        name="Test",
+                        x=plot_df["Model"],
+                        y=plot_df["Test Score"],
+                        marker_color=ACCENT2,
+                    )
+                )
+                fig_scores.add_trace(
+                    go.Bar(
+                        name="CV Mean",
+                        x=plot_df["Model"],
+                        y=plot_df["CV Mean"],
+                        marker_color="#06B6D4",
+                    )
+                )
+                fig_scores.update_layout(
+                    barmode="group",
+                    template=PLOTLY_TEMPLATE,
+                    title="Model Performance Comparison",
+                    yaxis_title="Score",
+                    margin=dict(t=40, b=30),
+                    height=380,
+                )
+                st.plotly_chart(fig_scores, use_container_width=True)
+
+            # K-Fold per-fold detail for each model
+            with st.expander("Per-Fold K-Fold Scores"):
+                for name, model in trained_models_dict.items():
+                    if name == "K-Means":
+                        continue
+                    scoring = "accuracy" if is_cls else "r2"
+                    fold_scores = cross_val_score(
+                        model,
+                        X_train,
+                        y_train,
+                        cv=KFold(n_splits=k, shuffle=True, random_state=42),
+                        scoring=scoring,
+                    )
+                    fig_fold = px.bar(
+                        x=[f"Fold {i + 1}" for i in range(k)],
+                        y=fold_scores,
+                        template=PLOTLY_TEMPLATE,
+                        title=f"{name} — K-Fold Scores",
+                        color_discrete_sequence=[ACCENT],
+                        labels={"x": "Fold", "y": scoring.capitalize()},
+                    )
+                    fig_fold.add_hline(
+                        y=fold_scores.mean(),
+                        line_dash="dash",
+                        line_color=ACCENT2,
+                        annotation_text=f"Mean: {fold_scores.mean():.4f}",
+                    )
+                    fig_fold.update_layout(margin=dict(t=40, b=20), height=300)
+                    st.plotly_chart(fig_fold, use_container_width=True)
+
+        if st.session_state.trained_models:
+            if st.button("Continue to Hyperparameter Tuning", key="btn_to_tune"):
+                advance(9)
+        st.markdown("</div>", unsafe_allow_html=True)
+
+    if st.session_state.current_step < 9:
+        return
+
+    # ── STEP 9 ─ Hyperparameter Tuning ─────────
+    with st.container():
+        st.markdown('<div class="glass-card">', unsafe_allow_html=True)
+        section(
+            "⑨ Hyperparameter Tuning",
+            "Fine-tune your models with GridSearch or RandomizedSearch.",
+        )
+
+        X_train = st.session_state.X_train
+        X_test = st.session_state.X_test
+        y_train = st.session_state.y_train
+        y_test = st.session_state.y_test
+        is_cls = st.session_state.problem_type == "Classification"
+
+        search_type = st.radio(
+            "Search strategy",
+            ["GridSearchCV", "RandomizedSearchCV"],
+            horizontal=True,
+            key="search_type",
+        )
+
+        # Define param grids for each model type
+        param_grids = {}
+        svm_kernel = st.session_state.get("svm_kernel", "rbf")
+        for name in st.session_state.trained_models:
+            if "Regression" in name or "Logistic" in name:
+                if is_cls:
+                    param_grids[name] = {
+                        "C": [0.01, 0.1, 1, 10],
+                        "max_iter": [500, 1000, 2000],
+                    }
+                else:
+                    param_grids[name] = {"fit_intercept": [True, False]}
+            elif "SVM" in name:
+                param_grids[name] = {
+                    "C": [0.1, 1, 10],
+                    "kernel": ["rbf", "linear", "poly"],
+                }
+                if is_cls:
+                    param_grids[name]["gamma"] = ["scale", "auto"]
+            elif "Random Forest" in name:
+                param_grids[name] = {
+                    "n_estimators": [50, 100, 200],
+                    "max_depth": [None, 5, 10, 20],
+                    "min_samples_split": [2, 5, 10],
+                }
+
+        model_to_tune = st.selectbox(
+            "Select model to tune",
+            [n for n in st.session_state.trained_models if n != "K-Means"],
+            key="tune_model_select",
+        )
+
+        if model_to_tune and model_to_tune in param_grids:
+            st.write("**Parameter grid:**")
+            st.json(param_grids[model_to_tune])
+
+            if st.button("Run Tuning", key="btn_tune"):
+                base_model = st.session_state.trained_models[model_to_tune]
+
+                # Score before tuning
+                scoring = "accuracy" if is_cls else "r2"
+                before_score = cross_val_score(
+                    base_model,
+                    X_train,
+                    y_train,
+                    cv=KFold(
+                        n_splits=st.session_state.k_folds, shuffle=True, random_state=42
+                    ),
+                    scoring=scoring,
+                ).mean()
+
+                with st.spinner("Tuning in progress…"):
+                    if search_type == "GridSearchCV":
+                        searcher = GridSearchCV(
+                            base_model,
+                            param_grids[model_to_tune],
+                            cv=KFold(
+                                n_splits=st.session_state.k_folds,
+                                shuffle=True,
+                                random_state=42,
+                            ),
+                            scoring=scoring,
+                            n_jobs=-1,
+                        )
+                    else:
+                        searcher = RandomizedSearchCV(
+                            base_model,
+                            param_grids[model_to_tune],
+                            cv=KFold(
+                                n_splits=st.session_state.k_folds,
+                                shuffle=True,
+                                random_state=42,
+                            ),
+                            scoring=scoring,
+                            n_jobs=-1,
+                            n_iter=min(20, 999),
+                            random_state=42,
+                        )
+                    searcher.fit(X_train, y_train)
+
+                best = searcher.best_estimator_
+                after_score = searcher.best_score_
+                delta = after_score - before_score
+
+                st.success(f"Best params: `{searcher.best_params_}`")
+
+                metric_cards(
+                    [
+                        (f"{before_score:.4f}", "Before Tuning"),
+                        (f"{after_score:.4f}", "After Tuning"),
+                        (f"{'+' if delta >= 0 else ''}{delta:.4f}", "Delta"),
+                    ]
+                )
+
+                # Before / After bar chart
+                fig_ba = go.Figure()
+                fig_ba.add_trace(
+                    go.Bar(
+                        name="Before",
+                        x=[model_to_tune],
+                        y=[before_score],
+                        marker_color="#64748B",
+                    )
+                )
+                fig_ba.add_trace(
+                    go.Bar(
+                        name="After",
+                        x=[model_to_tune],
+                        y=[after_score],
+                        marker_color=ACCENT,
+                    )
+                )
+                fig_ba.update_layout(
+                    barmode="group",
+                    template=PLOTLY_TEMPLATE,
+                    title="Tuning Impact",
+                    yaxis_title="Score",
+                    margin=dict(t=40, b=30),
+                    height=350,
+                )
+                st.plotly_chart(fig_ba, use_container_width=True)
+
+                # CV results table
+                cv_res = pd.DataFrame(searcher.cv_results_)
+                cols_show = [
+                    "params",
+                    "mean_test_score",
+                    "std_test_score",
+                    "rank_test_score",
+                ]
+                cols_show = [c for c in cols_show if c in cv_res.columns]
+                st.dataframe(
+                    cv_res[cols_show].sort_values("rank_test_score").head(10),
+                    use_container_width=True,
+                    hide_index=True,
+                )
+
+                # Update trained models with best estimator
+                st.session_state.trained_models[model_to_tune] = best
+
+                # Final test performance
+                final_pred = best.predict(X_test)
+                if is_cls:
+                    final_acc = accuracy_score(y_test, final_pred)
+                    final_f1 = f1_score(y_test, final_pred, average="weighted")
+                    metric_cards(
+                        [
+                            (f"{final_acc:.4f}", "Final Test Accuracy"),
+                            (f"{final_f1:.4f}", "Final Test F1"),
+                        ]
+                    )
+                else:
+                    final_r2 = r2_score(y_test, final_pred)
+                    final_mse = mean_squared_error(y_test, final_pred)
+                    metric_cards(
+                        [
+                            (f"{final_r2:.4f}", "Final Test R²"),
+                            (f"{final_mse:.4f}", "Final Test MSE"),
+                        ]
+                    )
+        elif model_to_tune:
+            st.info("No tunable hyperparameters defined for this model.")
+
+        st.markdown("</div>", unsafe_allow_html=True)
+
+    # Footer
+    st.markdown(
+        '<div style="text-align:center;margin-top:2rem;color:#999;font-size:.8rem;">'
+        "Built with Streamlit -- PipeDash v1.0"
+        "</div>",
+        unsafe_allow_html=True,
+    )
+
+
+if __name__ == "__main__":
+    main()
