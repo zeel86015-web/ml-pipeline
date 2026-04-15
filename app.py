@@ -688,8 +688,24 @@ def main():
         features = st.session_state.final_features or [
             c for c in df.columns if c != target
         ]
-        X = df[features]
+        X = df[features].select_dtypes(include="number")
         y = df[target]
+
+        # Final cleaning before ML: drop rows with missing target, fill feature NaNs
+        if y.isnull().any():
+            st.warning(f"Target column '{target}' has missing values. Dropping these rows.")
+            valid_mask = y.notnull()
+            X = X[valid_mask]
+            y = y[valid_mask]
+            
+        if X.isnull().any().any() or np.isinf(X.values).any():
+            st.info("Features contain missing or infinite values. Cleaning for model stability.")
+            X = X.replace([np.inf, -np.inf], np.nan).fillna(0)
+
+        do_scale = st.checkbox("Scale features (StandardScaler)", value=True, key="scale_check")
+        if do_scale:
+            scaler = StandardScaler()
+            X = pd.DataFrame(scaler.fit_transform(X), columns=X.columns, index=X.index)
 
         ratio = st.slider(
             "Training set ratio", 0.5, 0.95, 0.8, 0.05, key="split_slider"
