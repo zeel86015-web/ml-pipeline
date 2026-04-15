@@ -1,7 +1,5 @@
-"""
-PipeDash — Interactive ML Pipeline Dashboard
+PiePline — Interactive ML Pipeline Dashboard
 Uses the Movie dataset to walk through a complete ML workflow.
-"""
 
 import streamlit as st
 import pandas as pd
@@ -52,7 +50,7 @@ warnings.filterwarnings("ignore")
 # Page config
 # ─────────────────────────────────────────────
 st.set_page_config(
-    page_title="PipeDash - ML Pipeline",
+    page_title="PiePline - ML Pipeline",
     layout="wide",
     initial_sidebar_state="collapsed",
 )
@@ -63,82 +61,101 @@ st.set_page_config(
 st.markdown(
     """
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap');
 
 html, body, [class*="css"] {
-    font-family: 'Inter', sans-serif;
+    font-family: 'Outfit', sans-serif;
+    background-color: #f8f9fa;
 }
 .block-container { padding-top: 1.5rem; }
 
 /* ---------- step-bar ---------- */
 .step-bar {
     display: flex; justify-content: center; gap: 0;
-    margin-bottom: 2rem; padding: 0 1rem;
+    margin-bottom: 2.5rem; padding: 0 1rem;
     flex-wrap: wrap;
 }
 .step-item { display: flex; align-items: center; gap: 0; }
 .step-circle {
-    width: 40px; height: 40px; border-radius: 50%;
+    width: 44px; height: 44px; border-radius: 50%;
     display: flex; align-items: center; justify-content: center;
-    font-weight: 700; font-size: .85rem; flex-shrink: 0;
+    font-weight: 700; font-size: .9rem; flex-shrink: 0;
+    transition: all 0.3s ease;
 }
-.step-circle.done   { background: #111; color: #fff; }
-.step-circle.active  { background: #555; color: #fff; }
-.step-circle.todo   { background: #E5E5E5; color: #999; }
-.step-line { width: 38px; height: 3px; border-radius: 2px; }
-.step-line.done { background: #111; }
-.step-line.todo { background: #E5E5E5; }
+.step-circle.done   { background: linear-gradient(45deg, #FF8E53 30%, #FE6B8B 90%); color: #fff; box-shadow: 0 4px 10px rgba(254, 107, 139, .3); }
+.step-circle.active  { background: #111; color: #fff; transform: scale(1.1); }
+.step-circle.todo   { background: #FFF; color: #BBB; border: 2px solid #EEE; }
+.step-line { width: 40px; height: 4px; border-radius: 2px; }
+.step-line.done { background: #FE6B8B; }
+.step-line.todo { background: #EEE; }
 .step-label {
-    font-size: .6rem; text-align: center; color: #888;
-    max-width: 60px; margin-top: 4px; line-height: 1.15;
+    font-size: .65rem; text-align: center; color: #888;
+    max-width: 70px; margin-top: 6px; line-height: 1.15;
+    font-weight: 500;
 }
 .step-wrapper { display: flex; flex-direction: column; align-items: center; }
 
 /* ---------- cards ---------- */
 .glass-card {
     background: #fff;
-    border: 1px solid #E5E5E5;
-    border-radius: 12px;
-    padding: 2rem;
-    margin-bottom: 1.5rem;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 20px;
+    padding: 2.5rem;
+    margin-bottom: 2rem;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.04);
 }
 
 /* ---------- section title ---------- */
 .section-title {
-    font-size: 1.35rem; font-weight: 700;
-    color: #111;
+    font-size: 1.5rem; font-weight: 800;
+    background: linear-gradient(45deg, #FF8E53 30%, #FE6B8B 90%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
     margin-bottom: .6rem;
 }
 .section-sub {
-    font-size: .85rem; color: #888; margin-bottom: 1rem;
+    font-size: .9rem; color: #666; margin-bottom: 1.5rem;
 }
 
 /* ---------- metric cards ---------- */
-.metric-row { display: flex; gap: 1rem; flex-wrap: wrap; margin: 1rem 0; }
+.metric-row { display: flex; gap: 1.2rem; flex-wrap: wrap; margin: 1.5rem 0; }
 .metric-card {
-    flex: 1; min-width: 140px;
-    background: #FAFAFA;
-    border: 1px solid #E5E5E5;
-    border-radius: 10px;
-    padding: 1rem 1.2rem;
+    flex: 1; min-width: 160px;
+    background: #FFF;
+    border: 1px solid #F0F0F0;
+    border-radius: 16px;
+    padding: 1.2rem 1.5rem;
     text-align: center;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.02);
+    transition: transform 0.2s ease;
 }
-.metric-value { font-size: 1.6rem; font-weight: 800; color: #111; }
-.metric-label { font-size: .75rem; color: #888; margin-top: .2rem; }
+.metric-card:hover { transform: translateY(-3px); }
+.metric-value { font-size: 1.8rem; font-weight: 800; color: #111; }
+.metric-label { font-size: .8rem; color: #999; margin-top: .3rem; font-weight: 500; }
 
 /* ---------- hero ---------- */
-.hero { text-align: center; margin-bottom: .5rem; }
-.hero h1 { font-size: 2.6rem; font-weight: 800; color: #111; }
-.hero p { color: #888; font-size: 1rem; margin-top: -0.5rem; }
+.hero { text-align: center; margin-bottom: 1.5rem; }
+.hero h1 { 
+    font-size: 3.5rem; font-weight: 900; 
+    background: linear-gradient(45deg, #FF8E53 30%, #FE6B8B 90%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    letter-spacing: -1.5px;
+}
+.hero p { color: #888; font-size: 1.1rem; margin-top: -0.8rem; font-weight: 400; }
 
 /* ---------- buttons ---------- */
 div.stButton > button {
-    background: #111; color: #fff;
-    border: none; border-radius: 8px;
-    padding: .55rem 2rem; font-weight: 600;
+    background: linear-gradient(45deg, #FF8E53 30%, #FE6B8B 90%);
+    color: #fff;
+    border: none; border-radius: 10px;
+    padding: .75rem 2.5rem; font-weight: 700;
+    box-shadow: 0 4px 15px rgba(254, 107, 139, .3);
+    transition: all 0.3s ease;
 }
 div.stButton > button:hover {
-    background: #333;
+    transform: scale(1.02);
+    box-shadow: 0 6px 20px rgba(254, 107, 139, .4);
 }
 </style>
 """,
@@ -162,8 +179,8 @@ STEP_NAMES = [
 TOTAL_STEPS = len(STEP_NAMES)
 
 PLOTLY_TEMPLATE = "plotly_white"
-ACCENT = "#7C3AED"
-ACCENT2 = "#F59E0B"
+ACCENT = "#FF8E53"
+ACCENT2 = "#FE6B8B"
 
 
 def init_state():
@@ -241,8 +258,8 @@ def main():
 
     # Hero
     st.markdown(
-        '<div class="hero"><h1>PipeDash</h1>'
-        "<p>Interactive Machine-Learning Pipeline Dashboard</p></div>",
+        '<div class="hero"><h1>PiePline</h1>'
+        "<p>The Sweetest way to bake your Machine Learning Models</p></div>",
         unsafe_allow_html=True,
     )
     render_step_bar()
@@ -1169,8 +1186,8 @@ def main():
 
     # Footer
     st.markdown(
-        '<div style="text-align:center;margin-top:2rem;color:#999;font-size:.8rem;">'
-        "Built with Streamlit -- PipeDash v1.0"
+        '<div style="text-align:center;margin-top:2rem;color:#AAA;font-size:.8rem;font-weight:500;">'
+        "Crafted with ❤️ -- PiePline v2.0"
         "</div>",
         unsafe_allow_html=True,
     )
